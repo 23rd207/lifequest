@@ -164,8 +164,31 @@ button,input,select{font:inherit;color:inherit}
   padding-left:max(10px, env(safe-area-inset-left, 0px));
   padding-right:max(10px, env(safe-area-inset-right, 0px));
 }
-.tabs-in{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
-.tab{background:none;border:0;padding:8px 4px;min-height:48px;cursor:pointer;color:var(--dim);font-size:15px;border-radius:5px}
+.tabs-in{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+/* calendar */
+.cal-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.cal-head b{font-size:18px;font-weight:400}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
+.cal .wd{font-size:11px;color:var(--dim);text-align:center;padding-bottom:2px}
+.cal .wd.sun{color:var(--danger)}.cal .wd.sat{color:var(--c-int)}
+.day{background:#070a22;border:2px solid transparent;border-radius:4px;min-height:52px;padding:3px 2px 4px;
+  display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;color:var(--ink);font-size:13px;min-width:0}
+.day.out{opacity:.35}
+.day.today{border-color:var(--dim)}
+.day[aria-pressed="true"]{border-color:var(--gold)}
+.day .n{line-height:1.2}
+.day .clr{font-size:10px;color:var(--gold);line-height:1}
+.day .dots{display:flex;gap:2px;flex-wrap:wrap;justify-content:center}
+.day .dot{width:5px;height:5px;border-radius:1px;background:var(--c-int)}
+.day .dot.shift{background:var(--gold)}
+.day.sun .n{color:var(--danger)}.day.sat .n{color:var(--c-int)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11px;color:var(--dim);margin-top:8px}
+.legend i{display:inline-block;width:7px;height:7px;border-radius:1px;margin-right:4px;vertical-align:middle}
+.evlist{list-style:none;margin:0;padding:0}
+.evlist li{display:grid;grid-template-columns:5.5em 1fr;gap:8px;padding:7px 2px;border-bottom:1px dotted #ffffff1c;font-size:13px}
+.evlist li span:last-child{font-family:var(--f-body);min-width:0;overflow-wrap:anywhere}
+.evlist .t{color:var(--dim)}.evlist .shift{color:var(--gold)}
+.tab{background:none;border:0;padding:8px 2px;min-height:48px;cursor:pointer;color:var(--dim);font-size:14px;border-radius:5px;white-space:nowrap}
 .tab[aria-selected="true"]{color:var(--ink);background:var(--win-2)}
 .tab[aria-selected="true"]::before{content:"▶ ";color:var(--gold)}
 
@@ -199,6 +222,7 @@ button,input,select{font:inherit;color:inherit}
   <div class="tabs-in" role="tablist">
     <button class="tab" role="tab" id="tab-quest" data-tab="quest">クエスト</button>
     <button class="tab" role="tab" id="tab-status" data-tab="status">ステータス</button>
+    <button class="tab" role="tab" id="tab-cal" data-tab="cal">こよみ</button>
     <button class="tab" role="tab" id="tab-shop" data-tab="shop">ショップ</button>
   </div>
 </nav>
@@ -309,6 +333,8 @@ function fresh(){
     streak:0, streakDay:"", dayCount:{date:"",n:0},
     daily:{date:"",ids:[],done:{},bonus:false},
     events:{date:"",done:{}},
+    rems:{date:"",done:{}},
+    hist:{},
     week:{key:"",n:0,bonus:false},
     custom:[
       {id:"c1",t:"(例)メールの返信をすませる",s:"int",d:1,r:"daily",doneOn:"",got:null},
@@ -329,6 +355,8 @@ function normalize(s){
   o.stats=Object.assign(fresh().stats,s.stats||{});
   o.daily=Object.assign(fresh().daily,s.daily||{});
   o.events=Object.assign(fresh().events,s.events||{});
+  o.rems=Object.assign(fresh().rems,s.rems||{});
+  if(!o.hist||typeof o.hist!=="object")o.hist={};
   o.week=Object.assign(fresh().week,s.week||{});
   o.dayCount=Object.assign(fresh().dayCount,s.dayCount||{});
   if(!Array.isArray(o.custom))o.custom=[];
@@ -398,6 +426,7 @@ function rollover(now=new Date()){
   const t=today(now);let changed=false;
   if(state.daily.date!==t){state.daily={date:t,ids:dailyFor(t),done:{},bonus:false};changed=true}
   if(state.events.date!==t){state.events={date:t,done:{}};changed=true}
+  if(state.rems.date!==t){state.rems={date:t,done:{}};changed=true}
   if(state.dayCount.date!==t){state.dayCount={date:t,n:0};changed=true}
   const wk=weekKey(now);
   if(state.week.key!==wk){state.week={key:wk,n:0,bonus:false};changed=true}
@@ -428,6 +457,7 @@ function countDone(sign,sameDay=true){
   if(sameDay)state.dayCount.n=Math.max(0,state.dayCount.n+sign);
   state.week.n=Math.max(0,state.week.n+sign);
   const t=today();
+  if(sameDay){state.hist[t]=Math.max(0,(state.hist[t]||0)+sign);if(!state.hist[t])delete state.hist[t]}
   if(sign>0&&state.dayCount.n>=3&&state.streakDay!==t){
     state.streak=(state.streakDay===yesterday())?state.streak+1:1;
     state.streakDay=t;
@@ -459,6 +489,7 @@ function askName(){
     state.name=(document.getElementById("name-input").value.trim()||"ゆうしゃ").slice(0,12);
     ov.hidden=true;save();render();
     say([state.name+" の ぼうけんが はじまった！","まずは デイリーミッションに いどもう。"]);
+    setTimeout(collectRemsDoneElsewhere,3000);
   });
 }
 
@@ -466,7 +497,7 @@ function askName(){
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 let tab="quest";
 try{tab=sessionStorage.getItem("lq.tab")||"quest"}catch(e){}
-let ui={copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
+let ui={calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
 const app=document.getElementById("app");
 
 function heroHTML(now){
@@ -490,7 +521,20 @@ function heroHTML(now){
 }
 
 /* ---------- カレンダーの予定(ウィジェットから開いたときだけ届く) ---------- */
-const EVENTS = Array.isArray(window.__LQ_EVENTS__) ? window.__LQ_EVENTS__ : null;
+let EVENTS = Array.isArray(window.__LQ_EVENTS__) ? window.__LQ_EVENTS__ : null;
+let MONTH = Array.isArray(window.__LQ_MONTH__) ? window.__LQ_MONTH__ : null;
+const REMS = Array.isArray(window.__LQ_REMS__) ? window.__LQ_REMS__ : null;
+// Scriptable 側へ頼む操作(リマインダーの完了・予定の追加)
+window.__lqOps = [];
+function pushOp(o){ if(IN_WIDGET_APP) window.__lqOps.push(o); }
+// 予定を追加したあと、Scriptable が最新の予定を送り直してくる
+window.__lqSetEvents = function(todayList, monthList){
+  if(Array.isArray(todayList)) EVENTS = todayList;
+  if(Array.isArray(monthList)) MONTH = monthList;
+  pendingEvents = pendingEvents.filter(p => !(MONTH||[]).some(e => e.title===p.title && e.start===p.start));
+  render();
+};
+let pendingEvents = [];
 const SHIFT_RE = /シフト|バイト|出勤|勤務|shift/i;
 function eventQuests(){
   if(!EVENTS)return[];
@@ -500,6 +544,38 @@ function eventQuests(){
       s:shift?"body":"mind",d:shift?3:2,shift,start:e.start,end:e.end,allDay:!!e.allDay,cal:e.cal||""};
   }).sort((a,b)=>(a.allDay?0:a.start)-(b.allDay?0:b.start));
 }
+const REM_STAT = [[/勉強|学校|課題|読書|仕事|資格/,"int"],[/運動|筋トレ|健康|ジム|ラン/,"body"],[/家族|友|連絡|恋人|プレゼント/,"bond"]];
+function remQuests(){
+  if(!REMS)return[];
+  return REMS.map(r=>{
+    const key=(r.list||"")+" "+(r.title||"");
+    const st=(REM_STAT.find(([re])=>re.test(key))||[0,"mind"])[1];
+    const d=r.priority>=1&&r.priority<=4?3:r.priority>=6?1:2;
+    return {id:"r"+hash(String(r.id)).toString(36),t:r.title||"(タイトルなし)",s:st,d,due:r.due,hasTime:!!r.hasTime,
+      overdue:!!r.overdue,list:r.list||"",completed:!!r.completed};
+  });
+}
+function remSection(now){
+  const qs=remQuests();
+  const dn=qs.filter(q=>state.rems.done[q.id]).length;
+  return `<section class="win" aria-labelledby="h-rem">
+    <h2 class="win-title" id="h-rem"><b>リマインダー</b><span class="mono">${qs.length?dn+" / "+qs.length:""}</span></h2>
+    ${qs.length?`<ul class="qlist">${qs.map(q=>questRow(q,"rem",now)).join("")}</ul>`
+      :`<div class="empty">今日が期限のリマインダーはありません。</div>`}
+    <p class="note" style="margin:6px 0 0">今日が期限・期限切れのリマインダーが並びます。ここで達成すると、リマインダーアプリでも完了になります。</p>
+  </section>`;
+}
+// リマインダーアプリで先に完了したものを、ゲームでも受け取る
+function collectRemsDoneElsewhere(){
+  const got=remQuests().filter(q=>q.completed&&!state.rems.done[q.id]);
+  if(!got.length)return;
+  let lv=0,xp=0,g=0;
+  for(const q of got){const D=DIFF[q.d];lv=grant(D.xp,D.g,q.s,q.t)||lv;state.rems.done[q.id]=true;countDone(1);xp+=D.xp;g+=D.g}
+  save();render();
+  if(lv)showLevelUp(lv);
+  else say([`リマインダーで完了した ${got.length}件を 受け取った！`,`${xp} の経験値と ${g}G を手に入れた。`]);
+}
+
 function hm(ms){const d=new Date(ms);return pad(d.getHours())+":"+pad(d.getMinutes())}
 function eventSection(now){
   const qs=eventQuests();
@@ -523,7 +599,7 @@ function questStateFor(q,now){
 function questRow(q,kind,now){
   const D=DIFF[q.d], S=STATS[q.s];
   let right, cls="q", extra="";
-  const done = kind==="daily" ? !!state.daily.done[q.id] : kind==="event" ? !!state.events.done[q.id] : isDoneNow(q);
+  const done = kind==="daily" ? !!state.daily.done[q.id] : kind==="event" ? !!state.events.done[q.id] : kind==="rem" ? !!state.rems.done[q.id] : isDoneNow(q);
   if(done){
     cls+=" done";
     right=`<button class="stamp" data-undo="${kind}:${q.id}" aria-label="${esc(q.t)} の達成を取り消す">CLEAR</button>`;
@@ -532,6 +608,8 @@ function questRow(q,kind,now){
     if(s.st==="locked"){cls+=" locked";right=`<div class="wait">受注まで<br><span class="mono">${s.wait}</span></div>`}
     else if(s.st==="expired"){cls+=" expired";right=`<span class="expired-tag">期限切れ</span>`}
     else{right=`<button class="btn go" data-do="daily:${q.id}">達成</button>`;if(s.left)extra=`<span>のこり ${s.left}</span>`}
+  }else if(kind==="rem"){
+    right=`<button class="btn go" data-do="rem:${q.id}">達成</button>`;
   }else if(kind==="event"){
     if(!q.allDay&&now.getTime()<q.start){cls+=" locked";right=`<div class="wait">開始まで<br><span class="mono">${fmtHM(q.start-now.getTime())}</span></div>`}
     else right=`<button class="btn go" data-do="event:${q.id}">達成</button>`;
@@ -540,6 +618,7 @@ function questRow(q,kind,now){
   }
   const when = kind==="daily" ? `<span class="chip">${WINDOWS[q.w].n}</span>`
     : kind==="event" ? `<span class="chip">${q.allDay?"終日":hm(q.start)+"〜"+hm(q.end)}</span>${q.shift?`<span class="chip rew">シフト</span>`:""}`
+    : kind==="rem" ? `${q.overdue&&!done?`<span class="chip expired-tag">期限切れ</span>`:`<span class="chip">${q.hasTime&&q.due?hm(q.due)+"まで":"今日まで"}</span>`}${q.list?`<span>${esc(q.list)}</span>`:""}`
     : `<span class="chip">${(REPEAT[q.r]||REPEAT.daily).chip}</span>`;
   const del = kind==="custom" ? `<button class="btn ghost small" data-del="${q.id}" aria-label="${esc(q.t)} を削除" style="margin-left:auto">削除</button>`:"";
   return `<li class="${cls}"><span class="cur" aria-hidden="true">▶</span><span class="q-t">${esc(q.t)}</span>${right}
@@ -561,6 +640,8 @@ function questTab(now){
   </section>
 
   ${EVENTS?eventSection(now):(IN_WIDGET_APP?`<section class="win"><h2 class="win-title"><b>今日の予定クエスト</b></h2><div class="empty">カレンダーを読めませんでした。iPhoneの「設定」→「Scriptable」→「カレンダー」を「フルアクセス」にしてください。</div></section>`:"")}
+
+  ${REMS?remSection(now):(IN_WIDGET_APP?`<section class="win"><h2 class="win-title"><b>リマインダー</b></h2><div class="empty">リマインダーを読めませんでした。iPhoneの「設定」→「Scriptable」→「リマインダー」をオンにしてください。</div></section>`:"")}
 
   <section class="win" aria-labelledby="h-week">
     <h2 class="win-title" id="h-week"><b>ウィークリー</b><span class="mono">${wk} / ${WEEK_GOAL}</span></h2>
@@ -658,10 +739,64 @@ function shopTab(){
   </section>`;
 }
 
+/* ---------- こよみ(カレンダー) ---------- */
+function parseYmd(ds){const[y,m,d]=ds.split("-").map(Number);return new Date(y,m-1,d)}
+function eventsOn(ds){
+  const list=(MONTH||[]).concat(pendingEvents);
+  const day0=parseYmd(ds).getTime(),day1=day0+864e5;
+  return list.filter(e=>e.start<day1&&(e.allDay?e.end>day0:(e.end>day0||e.start>=day0)))
+    .filter(e=>e.allDay||e.start>=day0||e.end>day0)
+    .sort((a,b)=>(a.allDay?0:1)-(b.allDay?0:1)||a.start-b.start);
+}
+function isShift(e){return SHIFT_RE.test(e.title||"")||SHIFT_RE.test(e.cal||"")}
+function calTab(now){
+  const t=today(now);
+  if(!ui.calMonth)ui.calMonth=t.slice(0,7);
+  if(!ui.calSel)ui.calSel=ymd(now);
+  const [Y,M]=ui.calMonth.split("-").map(Number);
+  const first=new Date(Y,M-1,1);
+  const startOffset=(first.getDay()+6)%7;
+  const gridStart=new Date(Y,M-1,1-startOffset);
+  const cells=[];
+  for(let i=0;i<42;i++){
+    const d=new Date(gridStart.getFullYear(),gridStart.getMonth(),gridStart.getDate()+i);
+    if(i>=35&&d.getMonth()!==M-1)break;
+    const ds=ymd(d),evs=eventsOn(ds),clr=state.hist[ds]||0;
+    const cls=["day",d.getMonth()!==M-1?"out":"",ds===ymd(now)?"today":"",d.getDay()===0?"sun":d.getDay()===6?"sat":""].filter(Boolean).join(" ");
+    cells.push(`<button class="${cls}" data-day="${ds}" aria-pressed="${ds===ui.calSel}" aria-label="${d.getMonth()+1}月${d.getDate()}日 予定${evs.length}件 達成${clr}件">
+      <span class="n mono">${d.getDate()}</span>${clr?`<span class="clr mono">★${clr}</span>`:""}
+      <span class="dots">${evs.slice(0,4).map(e=>`<i class="dot ${isShift(e)?"shift":""}"></i>`).join("")}</span></button>`);
+  }
+  const sel=ui.calSel, sd=parseYmd(sel), evs=eventsOn(sel), clr=state.hist[sel]||0;
+  const canAdd=IN_WIDGET_APP;
+  return `<section class="win" aria-labelledby="h-cal">
+    <div class="cal-head"><button class="btn small" data-calnav="-1" aria-label="前の月">◀</button><b id="h-cal" class="mono">${Y}年 ${M}月</b><button class="btn small" data-calnav="1" aria-label="次の月">▶</button></div>
+    <div class="cal">${["月","火","水","木","金","土","日"].map((w,i)=>`<span class="wd ${i===6?"sun":i===5?"sat":""}">${w}</span>`).join("")}${cells.join("")}</div>
+    <div class="legend"><span><i style="background:var(--gold)"></i>★ 達成したクエスト数</span><span><i style="background:var(--c-int)"></i>予定</span><span><i style="background:var(--gold)"></i>シフト</span></div>
+    ${MONTH?"":`<p class="note" style="margin:8px 0 0">${IN_WIDGET_APP?"カレンダーを読めませんでした。iPhoneの「設定」→「Scriptable」→「カレンダー」を「フルアクセス」にしてください。":"iPhoneのカレンダーの予定は、ウィジェットから開いたときに表示されます。"}</p>`}
+  </section>
+  <section class="win" aria-labelledby="h-day">
+    <h2 class="win-title" id="h-day"><b>${sd.getMonth()+1}月${sd.getDate()}日(${WD[sd.getDay()]})</b><span>${clr?"★ 達成 "+clr+"件":""}</span></h2>
+    ${evs.length?`<ul class="evlist">${evs.map(e=>`<li><span class="mono ${isShift(e)?"shift":"t"}">${e.allDay?"終日":hm(e.start)+"〜"}</span><span>${esc(e.title||"予定")}${e.pending?` <small style="color:var(--dim)">(追加中)</small>`:""}</span></li>`).join("")}</ul>`
+      :`<div class="empty">この日の予定はありません。</div>`}
+    ${canAdd?(ui.addEvent?eventForm(sel):`<div style="margin-top:8px"><button class="btn" id="open-ev">＋ この日に予定を追加</button></div>`)
+      :`<p class="note" style="margin:8px 0 0">予定の追加は、ウィジェットから開いたゲームでできます。</p>`}
+  </section>`;
+}
+function eventForm(ds){
+  return `<form class="form" id="ev-form">
+    <label for="ev-title">予定の名前<input id="ev-title" maxlength="60" placeholder="例:バイト / 歯医者" required></label>
+    <label>時間${`<div class="seg"><button type="button" data-seg="evAllDay" data-v="0" aria-pressed="${!ui.evAllDay}">時間を決める</button><button type="button" data-seg="evAllDay" data-v="1" aria-pressed="${!!ui.evAllDay}">終日</button></div>`}</label>
+    ${ui.evAllDay?"":`<div class="row"><label for="ev-start">開始<input id="ev-start" type="time" value="10:00" required></label><label for="ev-end">終了<input id="ev-end" type="time" value="11:00" required></label></div>`}
+    <p class="note" style="margin:0">iPhoneの標準のカレンダーに追加されます(TimeTreeにも表示されます)。</p>
+    <div class="row"><button class="btn ghost" type="button" id="cancel-ev">やめる</button><button class="btn go" type="submit">追加する</button></div>
+  </form>`;
+}
+
 function render(){
   const now=new Date();
   if(rollover(now))save(false);
-  app.innerHTML=heroHTML(now)+(tab==="quest"?questTab(now):tab==="status"?statusTab():shopTab());
+  app.innerHTML=heroHTML(now)+(tab==="quest"?questTab(now):tab==="status"?statusTab():tab==="cal"?calTab(now):shopTab());
   document.querySelectorAll(".tab").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===tab)));
 }
 
@@ -671,6 +806,8 @@ function complete(kind,id){
   if(kind==="daily"){
     q=POOL.find(p=>p.id===id);if(!q||state.daily.done[id])return;
     if(questStateFor(q,new Date()).st!=="open")return;
+  }else if(kind==="rem"){
+    q=remQuests().find(r=>r.id===id);if(!q||state.rems.done[id])return;
   }else if(kind==="event"){
     q=eventQuests().find(e=>e.id===id);if(!q||state.events.done[id])return;
     if(!q.allDay&&Date.now()<q.start)return;
@@ -680,7 +817,8 @@ function complete(kind,id){
   const D=DIFF[q.d];label=q.t;
   const lines=[`「${q.t}」を 達成した！`,`${D.xp} の経験値と ${D.g}G を手に入れた。`];
   let lv=grant(D.xp,D.g,q.s,label);
-  if(kind==="daily")state.daily.done[id]=true;else if(kind==="event")state.events.done[id]=true;else q.doneOn=today();
+  if(kind==="daily")state.daily.done[id]=true;else if(kind==="event")state.events.done[id]=true;
+  else if(kind==="rem"){state.rems.done[id]=true;pushOp({type:"rem",id,done:true})}else q.doneOn=today();
   if(countDone(1))lines.push(`連続 ${state.streak}日目！ よくがんばった。`);
   if(kind==="daily"&&!state.daily.bonus&&state.daily.ids.every(i=>state.daily.done[i])){
     state.daily.bonus=true;lv=grant(ALL_CLEAR.xp,ALL_CLEAR.g,null,"デイリー オールクリア")||lv;
@@ -698,6 +836,7 @@ function undo(kind,id){
   if(kind==="daily"){q=POOL.find(p=>p.id===id);if(!q||!state.daily.done[id])return;delete state.daily.done[id];
     if(state.daily.bonus){state.daily.bonus=false;grant(ALL_CLEAR.xp,ALL_CLEAR.g,null,"デイリー オールクリア",-1)}}
   else if(kind==="event"){q=eventQuests().find(e=>e.id===id);if(!q||!state.events.done[id])return;delete state.events.done[id]}
+  else if(kind==="rem"){q=remQuests().find(r=>r.id===id);if(!q||!state.rems.done[id])return;delete state.rems.done[id];pushOp({type:"rem",id,done:false})}
   else{q=state.custom.find(c=>c.id===id);if(!q||!isDoneNow(q))return;sameDay=q.doneOn===today();q.doneOn=""}
   const D=DIFF[q.d];grant(D.xp,D.g,q.s,q.t,-1);countDone(-1,sameDay);
   if(state.week.bonus&&state.week.n<WEEK_GOAL){state.week.bonus=false;grant(WEEK_BONUS.xp,WEEK_BONUS.g,null,"ウィークリー達成",-1)}
@@ -709,6 +848,10 @@ app.addEventListener("click",e=>{
   const b=e.target.closest("button");if(!b)return;
   if(b.dataset.do){const[k,i]=b.dataset.do.split(":");complete(k,i);return}
   if(b.dataset.undo){const[k,i]=b.dataset.undo.split(":");undo(k,i);return}
+  if(b.dataset.day){ui.calSel=b.dataset.day;ui.addEvent=false;render();return}
+  if(b.dataset.calnav){const[y,m]=ui.calMonth.split("-").map(Number);const d=new Date(y,m-1+Number(b.dataset.calnav),1);
+    ui.calMonth=d.getFullYear()+"-"+pad(d.getMonth()+1);ui.addEvent=false;render();return}
+  if(b.dataset.seg==="evAllDay"){ui.evAllDay=b.dataset.v==="1";const t=document.getElementById("ev-title").value;render();document.getElementById("ev-title").value=t;return}
   if(b.dataset.seg){ui[b.dataset.seg]=b.dataset.seg==="qDiff"?Number(b.dataset.v):b.dataset.v;
     b.parentElement.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));return}
   if(b.dataset.del){state.custom=state.custom.filter(c=>c.id!==b.dataset.del);save();render();return}
@@ -717,6 +860,8 @@ app.addEventListener("click",e=>{
     state.gold-=r.c;state.log.unshift({t:"ごほうび購入:"+r.t,xp:0,g:-r.c,ts:Date.now()});save();render();
     say([`「${r.t}」を 手に入れた！`,"いまこそ 現実で使うとき。"]);return}
   switch(b.id){
+    case"open-ev":ui.addEvent=true;render();document.getElementById("ev-title").focus();break;
+    case"cancel-ev":ui.addEvent=false;render();break;
     case"open-add":ui.addQuest=true;render();document.getElementById("q-title").focus();break;
     case"cancel-add":ui.addQuest=false;render();break;
     case"open-reward":ui.addReward=true;render();document.getElementById("r-title").focus();break;
@@ -739,6 +884,20 @@ app.addEventListener("submit",e=>{
   }else if(e.target.id==="reward-form"){
     const t=document.getElementById("r-title").value.trim();const c=Math.max(1,Math.min(99999,parseInt(document.getElementById("r-cost").value,10)||0));
     if(!t||!c)return;state.rewards.push({id:uid(),t:t.slice(0,40),c});ui.addReward=false;save();render();
+  }else if(e.target.id==="ev-form"){
+    const title=document.getElementById("ev-title").value.trim();if(!title)return;
+    const base=parseYmd(ui.calSel);let start,end,allDay=!!ui.evAllDay;
+    if(allDay){start=base.getTime();end=start+864e5}
+    else{
+      const[sh,sm]=document.getElementById("ev-start").value.split(":").map(Number);
+      const[eh,em]=document.getElementById("ev-end").value.split(":").map(Number);
+      start=new Date(base.getFullYear(),base.getMonth(),base.getDate(),sh,sm).getTime();
+      end=new Date(base.getFullYear(),base.getMonth(),base.getDate(),eh,em).getTime();
+      if(end<=start)end+=864e5; // 日をまたぐシフト
+    }
+    pushOp({type:"addEvent",title:title.slice(0,60),start,end,allDay});
+    pendingEvents.push({id:"p"+Date.now(),title,start,end,allDay,cal:"",pending:true});
+    ui.addEvent=false;render();say([`予定「${title}」を カレンダーに追加した！`]);
   }else if(e.target.id==="import-form"){
     const raw=document.getElementById("import-box").value.trim();
     try{
@@ -755,7 +914,7 @@ app.addEventListener("submit",e=>{
 document.querySelector(".tabs").addEventListener("click",e=>{
   const b=e.target.closest(".tab");if(!b)return;tab=b.dataset.tab;
   try{sessionStorage.setItem("lq.tab",tab)}catch(err){}
-  ui.addQuest=ui.addReward=ui.confirmReset=ui.importOpen=false;ui.copyBox="";render();window.scrollTo(0,0);
+  ui.addQuest=ui.addReward=ui.confirmReset=ui.importOpen=ui.addEvent=false;ui.copyBox="";render();window.scrollTo(0,0);
 });
 
 /* live clock: countdown every second, full refresh each minute */
@@ -771,6 +930,7 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden)render()})
 
 render();
 if(!state.name)askName();
+else collectRemsDoneElsewhere();
 
 /* offline support */
 if(!IN_WIDGET_APP&&"serviceWorker" in navigator&&location.protocol==="https:"){

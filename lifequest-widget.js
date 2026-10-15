@@ -97,8 +97,47 @@ async function todayEvents(){
     return evs.filter(e => !SKIP_CAL.test(e.calendar ? e.calendar.title : ""))
       .filter(e => e.endDate.getTime() > start.getTime())
       .slice(0, 12)
-      .map(e => ({ id: e.identifier, title: e.title, start: e.startDate.getTime(), end: e.endDate.getTime(),
-        allDay: e.isAllDay, cal: e.calendar ? e.calendar.title : "" }));
+      .map(mapEvent);
+  } catch(e) { return null; }
+}
+function mapEvent(e){
+  return { id: e.identifier, title: e.title, start: e.startDate.getTime(), end: e.endDate.getTime(),
+    allDay: e.isAllDay, cal: e.calendar ? e.calendar.title : "" };
+}
+// こよみ画面用:先月の1日〜再来月の1日まで
+async function monthEvents(){
+  try {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth()-1, 1);
+    const end = new Date(now.getFullYear(), now.getMonth()+2, 1);
+    const evs = await CalendarEvent.between(start, end, []);
+    return evs.filter(e => !/誕生日|Birthday/i.test(e.calendar ? e.calendar.title : "")).slice(0, 400).map(mapEvent);
+  } catch(e) { return null; }
+}
+
+/* ---- リマインダー(今日が期限・期限切れ・今日完了したもの) ---- */
+const remMap = new Map();
+async function loadReminders(){
+  try {
+    const now = new Date();
+    const gd = gameDate(now), gds = ymd(gd);
+    const dayEnd = new Date(gd.getFullYear(), gd.getMonth(), gd.getDate()+1, DAY_START);
+    const dueToday = r => {
+      if (!r.dueDate) return false;
+      return r.dueDateIncludesTime ? r.dueDate.getTime() < dayEnd.getTime() : ymd(r.dueDate) <= gds;
+    };
+    const overdue = r => r.dueDateIncludesTime ? r.dueDate.getTime() < now.getTime() : ymd(r.dueDate) < gds;
+    const open = (await Reminder.allIncomplete()).filter(dueToday);
+    let doneToday = [];
+    try { doneToday = (await Reminder.completedToday()).filter(r => !r.dueDate || dueToday(r)); } catch(e) {}
+    const all = open.concat(doneToday).slice(0, 25);
+    remMap.clear();
+    return all.map(r => {
+      remMap.set("r" + hash(String(r.identifier)).toString(36), r);
+      return { id: r.identifier, title: r.title, due: r.dueDate ? r.dueDate.getTime() : null,
+        hasTime: !!r.dueDateIncludesTime, overdue: !r.isCompleted && !!r.dueDate && overdue(r),
+        list: r.calendar ? r.calendar.title : "", priority: r.priority || 0, completed: !!r.isCompleted };
+    });
   } catch(e) { return null; }
 }
 
@@ -124,9 +163,11 @@ async function openGame(){
     return;
   }
   const saved = loadSave();
-  const events = await todayEvents();
-  const boot = "<script>window.__LQ_HOST__='scriptable';window.__LQ_STATE__=" + JSON.stringify(saved).replace(/</g, "\\u003c")
-    + ";window.__LQ_EVENTS__=" + JSON.stringify(events).replace(/</g, "\\u003c") + ";</script>";
+  const [events, month, rems] = [await todayEvents(), await monthEvents(), await loadReminders()];
+  const js = v => JSON.stringify(v).replace(/</g, "\\u003c");
+  const boot = "<script>window.__LQ_HOST__='scriptable';window.__LQ_STATE__=" + js(saved)
+    + ";window.__LQ_EVENTS__=" + js(events) + ";window.__LQ_MONTH__=" + js(month)
+    + ";window.__LQ_REMS__=" + js(rems) + ";</script>";
   html = html.replace("<head>", "<head>" + boot)
     // フォントの読み込みを待たずに表示する
     .replace(/<link rel="stylesheet" href="(https:\/\/fonts\.googleapis\.com[^"]+)">/, '<link rel="stylesheet" href="$1" media="print" onload="this.media=\'all\'">');
@@ -137,19 +178,40 @@ async function openGame(){
   const shown = wv.present(false).then(() => { open = false; }, () => { open = false; });
   // 次回のために、裏で最新版を取っておく
   if (hadCache) fetchGame(10);
-  // 1秒ごとにゲームのセーブを受け取ってファイルに書く
-  while (open) {
-    await wait(1000);
-    try {
-      const s = await wv.evaluateJavaScript("(function(){var s=window.__lqPending||null;window.__lqPending=null;return s;})()", false);
-      if (typeof s === "string" && s) writeSave(s);
-    } catch(e) {}
+  // 1秒ごとに、ゲームのセーブと頼まれた操作を受け取る
+  const TAKE = "(function(){var s=window.__lqPending||null;window.__lqPending=null;var o=window.__lqOps||[];window.__lqOps=[];return JSON.stringify({s:s,o:o});})()";
+  async function drain(){
+    let r = null;
+    try { r = JSON.parse(await wv.evaluateJavaScript(TAKE, false)); } catch(e) { return; }
+    if (r.s) writeSave(r.s);
+    let added = false;
+    for (const op of r.o || []) {
+      try {
+        if (op.type === "rem") {
+          const rem = remMap.get(op.id);
+          if (rem) { rem.isCompleted = !!op.done; rem.save(); }
+        } else if (op.type === "addEvent") {
+          const ev = new CalendarEvent();
+          ev.title = String(op.title || "予定");
+          ev.isAllDay = !!op.allDay;
+          ev.startDate = new Date(op.start);
+          ev.endDate = new Date(op.allDay ? op.start + 86399000 : op.end);
+          ev.calendar = await Calendar.defaultForEvents();
+          ev.save();
+          added = true;
+        }
+      } catch(e) {}
+    }
+    if (added) {
+      try {
+        const te = await todayEvents(), me = await monthEvents();
+        await wv.evaluateJavaScript("window.__lqSetEvents(" + js(te) + "," + js(me) + ");0", false);
+      } catch(e) {}
+    }
   }
+  while (open) { await wait(1000); await drain(); }
   await shown;
-  try {
-    const s = await wv.evaluateJavaScript("window.__lqPending||null", false);
-    if (typeof s === "string" && s) writeSave(s);
-  } catch(e) {}
+  await drain();
 }
 
 /* ---- ウィジェット ---- */
@@ -167,13 +229,19 @@ async function buildWidget(){
   const evId = e => "e" + hash(String(e.id) + "|" + e.start).toString(36);
   const nextEv = evs.filter(e => !evDone[evId(e)] && (e.allDay || e.end > now.getTime()))
     .sort((a,b) => (a.allDay ? 0 : a.start) - (b.allDay ? 0 : b.start));
+  const family = config.widgetFamily || "medium";
+  let remsLeft = [];
+  if (family === "large" || family === "extraLarge") {
+    const rs = (await loadReminders()) || [];
+    const rDone = st && st.rems && st.rems.date === t ? st.rems.done || {} : {};
+    remsLeft = rs.filter(r => !r.completed && !rDone["r" + hash(String(r.id)).toString(36)]);
+  }
   const streakAlive = st && st.streak && (st.streakDay === t || st.streakDay === ymd(new Date(gameDate(now).getTime() - 864e5)));
   const streak = streakAlive ? st.streak : 0;
   const week = st && st.week && st.week.key === weekKey(now) ? st.week.n : 0;
   const customs = st && Array.isArray(st.custom) ? st.custom.filter(c => !(c.r === "once" && c.doneOn && c.doneOn !== t))
     .map(c => ({ t:c.t, done: !!c.doneOn && periodKey(c.r, c.doneOn) === periodKey(c.r, t) })) : [];
 
-  const family = config.widgetFamily || "medium";
   const w = new ListWidget();
   w.backgroundColor = C.sky;
   w.setPadding(12, 14, 12, 14);
@@ -233,6 +301,15 @@ async function buildWidget(){
           const shift = SHIFT_RE.test(e.title || "") || SHIFT_RE.test(e.cal || "");
           text(row, e.allDay ? "終日" : hm(e.start), 11, shift ? C.gold : C.dim, true);
           text(row, e.title || "予定", 12, C.ink);
+        }
+      }
+      if (remsLeft.length) {
+        w.addSpacer(8);
+        text(w, "リマインダー のこり" + remsLeft.length + "件", 10, C.dim);
+        for (const r of remsLeft.slice(0, 3)) {
+          const row = w.addStack(); row.spacing = 5;
+          text(row, r.overdue ? "!" : "▶", 11, r.overdue ? C.danger : C.ink, true);
+          text(row, r.title || "リマインダー", 12, C.ink);
         }
       }
       if (customs.length) {
