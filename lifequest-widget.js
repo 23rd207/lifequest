@@ -100,6 +100,16 @@ async function todayEvents(){
       .map(mapEvent);
   } catch(e) { return null; }
 }
+async function tomorrowEvents(){
+  try {
+    const now = new Date();
+    const start = gameDate(now); start.setHours(DAY_START, 0, 0, 0); start.setDate(start.getDate() + 1);
+    const end = new Date(start.getTime() + 24*3600e3);
+    const evs = await CalendarEvent.between(start, end, []);
+    return evs.filter(e => !SKIP_CAL.test(e.calendar ? e.calendar.title : ""))
+      .sort((a,b) => (a.isAllDay ? 0 : 1) - (b.isAllDay ? 0 : 1) || a.startDate - b.startDate).map(mapEvent);
+  } catch(e) { return []; }
+}
 function mapEvent(e){
   return { id: e.identifier, title: e.title, start: e.startDate.getTime(), end: e.endDate.getTime(),
     allDay: e.isAllDay, cal: e.calendar ? e.calendar.title : "" };
@@ -332,35 +342,91 @@ async function buildWidget(){
     const d = row.addDate(nextReset(now)); d.applyTimerStyle(); d.font = Font.mediumMonospacedSystemFont(12); d.textColor = C.dim; d.rightAlignText();
   }
 
+  // 空いた行を埋めるための材料
+  const tomorrow = await tomorrowEvents();
+  const openQuests = quests.filter(q => !done.has(q.id) && questState(q, now) === "open");
+  const customsLeft = customs.filter(c => !c.done);
+  function sectionTitle(str, right){
+    const h = w.addStack(); h.centerAlignContent();
+    text(h, str, 12, C.dim); h.addSpacer();
+    if (right) text(h, right, 12, C.dim);
+  }
+  function itemLine(mark, markColor, str, color){
+    const row = w.addStack(); row.centerAlignContent(); row.spacing = 6;
+    text(row, mark, 13, markColor, true);
+    text(row, str, 14, color);
+  }
+  function tomorrowLines(max){
+    for (const e of tomorrow.slice(0, max)) {
+      const row = w.addStack(); row.centerAlignContent(); row.spacing = 6;
+      const tm = row.addText(e.allDay ? "終日 " : hm(e.start));
+      tm.font = Font.mediumMonospacedSystemFont(13); tm.textColor = C.dim; tm.lineLimit = 1;
+      text(row, e.title || "予定", 14, C.dim);
+    }
+  }
+  // 予定が少ないときに、空いた行へ「次にやること」を入れる
+  function fillNext(slots){
+    const items = [];
+    for (const r of remsLeft) items.push(["!", r.overdue ? C.danger : C.gold, r.title || "リマインダー"]);
+    for (const q of openQuests) items.push(["▶", C[q.s] || C.ink, q.t]);
+    if (slots <= 0 || !items.length) return;
+    w.addSpacer(6);
+    sectionTitle("次にやること");
+    for (const it of items.slice(0, slots)) itemLine(it[0], it[1], it[2], C.ink);
+  }
+
   if (family === "small") {
     eventsBlock(2, 14);
+    if (upcoming.length < 2) fillNext(2 - upcoming.length);
     w.addSpacer();
     footer();
   } else if (family === "medium") {
     eventsBlock(3, 15);
+    if (upcoming.length < 2) fillNext(1);
     w.addSpacer();
     footer();
     w.addSpacer(2);
     footer2();
   } else {
+    // 大:だいたい15行ぶん。予定 → ステータスとデイリー → 残りの行を埋める → ウィークリー
+    const shownEv = Math.min(upcoming.length, 4);
     eventsBlock(4, 15);
-    w.addSpacer(10);
+    let used = 1 + Math.max(shownEv, 1) + (upcoming.length > 4 ? 1 : 0);
+    if (shownEv < 2 && tomorrow.length) {
+      w.addSpacer(6);
+      sectionTitle("明日の予定");
+      tomorrowLines(2 - shownEv);
+      used += 1 + Math.min(2 - shownEv, tomorrow.length);
+    }
+    w.addSpacer();
     const main = w.addStack(); main.spacing = 12;
-    const left = main.addStack(); left.layoutVertically(); left.size = new Size(110, 0);
+    const left = main.addStack(); left.layoutVertically(); left.size = new Size(125, 0);
     statusBlock(left);
     const right = main.addStack(); right.layoutVertically(); right.spacing = 4;
     text(right, "デイリーミッション " + nDone + "/" + quests.length, 12, C.dim);
     for (const q of quests) questLine(right, q);
-    if (remsLeft.length) {
-      w.addSpacer(8);
-      text(w, "リマインダー のこり" + remsLeft.length + "件", 12, C.dim);
-      for (const r of remsLeft.slice(0, 2)) {
-        const row = w.addStack(); row.spacing = 5;
-        text(row, r.overdue ? "!" : "▶", 13, r.overdue ? C.danger : C.ink, true);
-        text(row, r.title || "リマインダー", 14, C.ink);
-      }
+    used += 6;
+    let room = 15 - used - 1; // 最後の1行はウィークリー
+    if (remsLeft.length && room >= 2) {
+      w.addSpacer();
+      const n = Math.min(remsLeft.length, room - 1, 3);
+      sectionTitle("リマインダー", "のこり" + remsLeft.length + "件");
+      for (const r of remsLeft.slice(0, n)) itemLine(r.overdue ? "!" : "▶", r.overdue ? C.danger : C.gold, r.title || "リマインダー", C.ink);
+      room -= n + 1;
+    }
+    if (customsLeft.length && room >= 2) {
+      w.addSpacer();
+      const n = Math.min(customsLeft.length, room - 1, 3);
+      sectionTitle("マイクエスト");
+      for (const c of customsLeft.slice(0, n)) itemLine("▶", C.ink, c.t, C.ink);
+      room -= n + 1;
     }
     w.addSpacer();
+    const wk = w.addStack(); wk.centerAlignContent(); wk.spacing = 8;
+    text(wk, "ウィークリー " + Math.min(week, WEEK_GOAL) + "/" + WEEK_GOAL, 12, C.dim);
+    bar(wk, week/WEEK_GOAL, 9);
+    wk.addSpacer();
+    text(wk, "連続" + streak + "日", 12, C.dim);
   }
   if (!st) text(w, "タップして冒険をはじめる", 11, C.dim);
   return w;
