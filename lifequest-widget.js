@@ -1,12 +1,14 @@
 // ライフクエスト ウィジェット(Scriptable 用)
-// 使い方: ゲームの「ステータス」→「ウィジェットに反映」を押してから、このウィジェットをタップ。
+// ウィジェットをタップすると、このスクリプトがゲームを開きます。
+// セーブデータはこのスクリプトと共有なので、遊んだ結果がそのままウィジェットに出ます。
 // icon-color: deep-blue; icon-glyph: magic;
 
+const GAME_URL = "https://23rd207.github.io/lifequest/";
 const DAY_START = 4;
-const PREFIX = "LIFEQUEST1:";
+const WEEK_GOAL = 20;
 const C = {
-  sky: new Color("#0b0e2b"), win: new Color("#131a52"), ink: new Color("#f3f1ff"),
-  dim: new Color("#a3a8dc"), gold: new Color("#ffd45e"), danger: new Color("#ff7b86"),
+  sky: new Color("#0b0e2b"), ink: new Color("#f3f1ff"), dim: new Color("#a3a8dc"),
+  gold: new Color("#ffd45e"), danger: new Color("#ff7b86"),
   body: new Color("#ff8a6b"), int: new Color("#6fbcff"), mind: new Color("#bb93ff"), bond: new Color("#6fe0a6")
 };
 const WINDOWS = { morning:{from:5,to:11}, night:{from:19,to:28} };
@@ -39,12 +41,14 @@ const POOL = [
   {id:"n4",t:"湯船につかる",s:"body",d:1,w:"night"},
   {id:"n5",t:"日付が変わる前にふとんに入る",s:"body",d:3,w:"night"}
 ];
+const TITLES = [[1,"村人"],[3,"見習い冒険者"],[6,"冒険者"],[10,"熟練の旅人"],[15,"勇者"],[20,"伝説の勇者"],[30,"人生の賢者"]];
 
-/* ゲームと同じ計算で、今日のデイリーミッションを出す */
+/* ---- ゲームと同じ計算 ---- */
 const pad = n => String(n).padStart(2, "0");
 function ymd(d){ return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
 function gameDate(now){ return new Date(now.getTime() - DAY_START*3600e3); }
 function today(now){ return ymd(gameDate(now)); }
+function weekKey(now){ const d=gameDate(now); d.setDate(d.getDate()-(d.getDay()+6)%7); return ymd(d); }
 function gameHour(now){ const h = now.getHours()+now.getMinutes()/60; return h < DAY_START ? h+24 : h; }
 function nextReset(now){ const n = new Date(now); n.setHours(DAY_START,0,0,0); if (n <= now) n.setDate(n.getDate()+1); return n; }
 function hash(s){ let h=2166136261; for (const c of s){ h^=c.charCodeAt(0); h=Math.imul(h,16777619); } return h>>>0; }
@@ -55,6 +59,15 @@ function dailyFor(date){
   const by = w => POOL.filter(q => q.w === w);
   return [...pick(by("morning"),1,r), ...pick(by("any"),3,r), ...pick(by("night"),1,r)].map(q => q.id);
 }
+const need = l => 40 + l*20;
+function levelInfo(xp){ let l=1,x=xp; while(x>=need(l)){ x-=need(l); l++; } return {lv:l,cur:x,need:need(l)}; }
+function titleFor(lv){ let t=TITLES[0][1]; for (const [l,n] of TITLES) if (lv>=l) t=n; return t; }
+function periodKey(r, ds){
+  if (r === "weekly"){ const [y,m,d]=ds.split("-").map(Number); const dt=new Date(y,m-1,d); dt.setDate(dt.getDate()-(dt.getDay()+6)%7); return ymd(dt); }
+  if (r === "monthly") return ds.slice(0,7);
+  if (r === "once") return "once";
+  return ds;
+}
 function questState(q, now){
   if (q.w === "any") return "open";
   const w = WINDOWS[q.w], h = gameHour(now);
@@ -63,104 +76,140 @@ function questState(q, now){
   return "open";
 }
 
-/* 保存データ */
+/* ---- セーブデータ(ゲームと共有) ---- */
 const fm = FileManager.local();
-const path = fm.joinPath(fm.documentsDirectory(), "lifequest-widget.json");
-function load(){ try { return fm.fileExists(path) ? JSON.parse(fm.readString(path)) : null; } catch(e){ return null; } }
+const dir = fm.documentsDirectory();
+const SAVE = fm.joinPath(dir, "lifequest-save.json");
+const HTML_CACHE = fm.joinPath(dir, "lifequest-game.html");
+function loadSave(){ try { return fm.fileExists(SAVE) ? fm.readString(SAVE) : null; } catch(e){ return null; } }
+function writeSave(str){ try { JSON.parse(str); fm.writeString(SAVE, str); } catch(e){} }
 
-if (config.runsInApp) {
-  let text = "";
-  try { text = Pasteboard.paste() || ""; } catch(e) {}
-  if (text.startsWith(PREFIX)) {
-    try {
-      const data = JSON.parse(text.slice(PREFIX.length));
-      fm.writeString(path, JSON.stringify(data));
-    } catch(e) {}
+/* ---- ゲームを開く ---- */
+async function openGame(){
+  let html = null;
+  try {
+    const req = new Request(GAME_URL + "?t=" + Date.now());
+    req.timeoutInterval = 8;
+    html = await req.loadString();
+    if (html && html.includes("ライフクエスト")) fm.writeString(HTML_CACHE, html); else html = null;
+  } catch(e) {}
+  if (!html && fm.fileExists(HTML_CACHE)) html = fm.readString(HTML_CACHE);
+  if (!html) {
+    const a = new Alert(); a.title = "ゲームを開けませんでした"; a.message = "はじめの1回はインターネットにつないで開いてください。"; a.addAction("OK"); await a.present();
+    return;
   }
+  const saved = loadSave();
+  const boot = "<script>window.__LQ_HOST__='scriptable';window.__LQ_STATE__=" + JSON.stringify(saved) + ";</script>";
+  html = html.replace("<head>", "<head>" + boot);
+
+  const wv = new WebView();
+  await wv.loadHTML(html, GAME_URL);
+  let open = true;
+  const shown = wv.present(false).then(() => { open = false; });
+  // ゲームがセーブするたびに受け取ってファイルに書く(1.5秒ごとに確認)
+  const listen = `(function(){
+    function take(){ var s=window.__lqPending; window.__lqPending=null; return s||null; }
+    var now=take(); if(now){ completion(now); return; }
+    var done=false;
+    function h(){ if(done) return; done=true; window.removeEventListener('lq-save',h); completion(take()); }
+    window.addEventListener('lq-save',h);
+    setTimeout(function(){ if(done) return; done=true; window.removeEventListener('lq-save',h); completion(null); },1500);
+  })()`;
+  while (open) {
+    try { const s = await wv.evaluateJavaScript(listen, true); if (s) writeSave(s); }
+    catch(e) { break; }
+  }
+  await shown;
+  try { const s = await wv.evaluateJavaScript("window.__lqPending||null", false); if (s) writeSave(s); } catch(e) {}
 }
 
-const data = load();
-const now = new Date();
-const t = today(now);
-const fresh = data && data.date === t;
-const ids = fresh && Array.isArray(data.ids) && data.ids.length ? data.ids : dailyFor(t);
-const done = new Set(fresh ? (data.done || []) : []);
-const quests = ids.map(id => POOL.find(p => p.id === id)).filter(Boolean);
+/* ---- ウィジェット ---- */
+function buildWidget(){
+  const now = new Date();
+  const t = today(now);
+  let st = null; try { st = JSON.parse(loadSave() || "null"); } catch(e) {}
+  const L = levelInfo(st ? st.xp || 0 : 0);
+  const ids = st && st.daily && st.daily.date === t && st.daily.ids && st.daily.ids.length ? st.daily.ids : dailyFor(t);
+  const done = new Set(st && st.daily && st.daily.date === t ? Object.keys(st.daily.done || {}) : []);
+  const quests = ids.map(id => POOL.find(p => p.id === id)).filter(Boolean);
+  const nDone = quests.filter(q => done.has(q.id)).length;
+  const streakAlive = st && st.streak && (st.streakDay === t || st.streakDay === ymd(new Date(gameDate(now).getTime() - 864e5)));
+  const streak = streakAlive ? st.streak : 0;
+  const week = st && st.week && st.week.key === weekKey(now) ? st.week.n : 0;
+  const customs = st && Array.isArray(st.custom) ? st.custom.filter(c => !(c.r === "once" && c.doneOn && c.doneOn !== t))
+    .map(c => ({ t:c.t, done: !!c.doneOn && periodKey(c.r, c.doneOn) === periodKey(c.r, t) })) : [];
 
-const family = config.widgetFamily || "medium";
-const w = new ListWidget();
-w.backgroundColor = C.sky;
-w.setPadding(12, 14, 12, 14);
-w.refreshAfterDate = new Date(now.getTime() + 15*60e3);
+  const family = config.widgetFamily || "medium";
+  const w = new ListWidget();
+  w.backgroundColor = C.sky;
+  w.setPadding(12, 14, 12, 14);
+  w.url = URLScheme.forRunningScript();
+  w.refreshAfterDate = new Date(now.getTime() + 10*60e3);
 
-function text(stack, str, size, color, bold){
-  const el = stack.addText(str);
-  el.font = bold ? Font.boldSystemFont(size) : Font.systemFont(size);
-  el.textColor = color; el.lineLimit = 1; el.minimumScaleFactor = 0.7;
-  return el;
-}
-function bar(stack, ratio, width){
-  const cells = 10, n = Math.round(Math.max(0, Math.min(1, ratio))*cells);
-  const el = stack.addText("■".repeat(n) + "□".repeat(cells-n));
-  el.font = Font.systemFont(width); el.textColor = C.gold; el.lineLimit = 1;
-}
-function statusBlock(stack){
-  const lv = data ? data.lv : 1;
-  text(stack, data ? data.title : "村人", 10, C.gold);
-  text(stack, data ? data.name : "ゆうしゃ", 15, C.ink, true);
-  const row = stack.addStack(); row.centerAlignContent();
-  text(row, "Lv ", 10, C.dim); text(row, String(lv), 22, C.ink, true);
-  if (data) bar(stack, data.cur/data.need, 8);
-  stack.addSpacer(3);
-  if (data) text(stack, data.gold+"G ・ 連続"+data.streak+"日", 10, C.dim);
-  const rr = stack.addStack(); rr.centerAlignContent();
-  text(rr, "リセット ", 10, C.dim);
-  const d = rr.addDate(nextReset(now)); d.applyTimerStyle(); d.font = Font.mediumMonospacedSystemFont(10); d.textColor = C.ink;
-}
-function questLine(stack, q){
-  const st = done.has(q.id) ? "done" : questState(q, now);
-  const row = stack.addStack(); row.centerAlignContent(); row.spacing = 5;
-  const mark = { done:"✔", open:"▶", locked:"…", expired:"×" }[st];
-  const mc = { done:C.gold, open:C[q.s] || C.ink, locked:C.dim, expired:C.danger }[st];
-  text(row, mark, 11, mc, true);
-  text(row, q.t, 12, st === "open" ? C.ink : C.dim, st === "open");
-}
+  function text(stack, str, size, color, bold){
+    const el = stack.addText(str);
+    el.font = bold ? Font.boldSystemFont(size) : Font.systemFont(size);
+    el.textColor = color; el.lineLimit = 1; el.minimumScaleFactor = 0.7;
+    return el;
+  }
+  function bar(stack, ratio, size){
+    const cells = 10, n = Math.round(Math.max(0, Math.min(1, ratio))*cells);
+    const el = stack.addText("■".repeat(n) + "□".repeat(cells-n));
+    el.font = Font.systemFont(size); el.textColor = C.gold; el.lineLimit = 1;
+  }
+  function statusBlock(stack){
+    text(stack, titleFor(L.lv), 10, C.gold);
+    text(stack, st && st.name ? st.name : "ゆうしゃ", 15, C.ink, true);
+    const row = stack.addStack(); row.centerAlignContent();
+    text(row, "Lv ", 10, C.dim); text(row, String(L.lv), 22, C.ink, true);
+    bar(stack, L.cur/L.need, 8);
+    stack.addSpacer(3);
+    text(stack, (st ? st.gold || 0 : 0)+"G ・ 連続"+streak+"日", 10, C.dim);
+    const rr = stack.addStack(); rr.centerAlignContent();
+    text(rr, "リセット ", 10, C.dim);
+    const d = rr.addDate(nextReset(now)); d.applyTimerStyle(); d.font = Font.mediumMonospacedSystemFont(10); d.textColor = C.ink;
+  }
+  function questLine(stack, q){
+    const s = done.has(q.id) ? "done" : questState(q, now);
+    const row = stack.addStack(); row.centerAlignContent(); row.spacing = 5;
+    text(row, { done:"✔", open:"▶", locked:"…", expired:"×" }[s], 11, { done:C.gold, open:C[q.s] || C.ink, locked:C.dim, expired:C.danger }[s], true);
+    text(row, q.t, 12, s === "open" ? C.ink : C.dim, s === "open");
+  }
 
-const nDone = quests.filter(q => done.has(q.id)).length;
-if (family === "small") {
-  statusBlock(w);
-  w.addSpacer();
-  text(w, "デイリー "+nDone+"/"+quests.length, 11, nDone === quests.length ? C.gold : C.ink, true);
-} else {
-  const main = w.addStack(); main.spacing = 12;
-  const left = main.addStack(); left.layoutVertically(); left.size = new Size(110, 0);
-  statusBlock(left);
-  const right = main.addStack(); right.layoutVertically(); right.spacing = 4;
-  text(right, "デイリーミッション "+nDone+"/"+quests.length, 10, C.dim);
-  for (const q of quests) questLine(right, q);
-  if (family === "large" || family === "extraLarge") {
-    w.addSpacer(10);
-    if (data) {
-      text(w, "ウィークリー "+Math.min(data.week, data.weekGoal)+"/"+data.weekGoal, 10, C.dim);
-      bar(w, data.week/data.weekGoal, 9);
-      w.addSpacer(8);
-      const my = (data.customs || []);
-      if (my.length) {
+  if (family === "small") {
+    statusBlock(w);
+    w.addSpacer();
+    text(w, "デイリー "+nDone+"/"+quests.length, 11, nDone === quests.length ? C.gold : C.ink, true);
+  } else {
+    const main = w.addStack(); main.spacing = 12;
+    const left = main.addStack(); left.layoutVertically(); left.size = new Size(110, 0);
+    statusBlock(left);
+    const right = main.addStack(); right.layoutVertically(); right.spacing = 4;
+    text(right, "デイリーミッション "+nDone+"/"+quests.length, 10, C.dim);
+    for (const q of quests) questLine(right, q);
+    if (family === "large" || family === "extraLarge") {
+      w.addSpacer(10);
+      text(w, "ウィークリー "+Math.min(week, WEEK_GOAL)+"/"+WEEK_GOAL, 10, C.dim);
+      bar(w, week/WEEK_GOAL, 9);
+      if (customs.length) {
+        w.addSpacer(8);
         text(w, "マイクエスト", 10, C.dim);
-        for (const c of my.slice(0, 5)) {
+        for (const c of customs.slice(0, 5)) {
           const row = w.addStack(); row.spacing = 5;
           text(row, c.done ? "✔" : "▶", 11, c.done ? C.gold : C.ink, true);
           text(row, c.t, 12, c.done ? C.dim : C.ink);
         }
       }
     }
+    w.addSpacer();
   }
-  w.addSpacer();
+  if (!st) text(w, "タップして冒険をはじめる", 9, C.dim);
+  return w;
 }
-if (!data) text(w, "ゲームで「ウィジェットに反映」→ここをタップ", 9, C.dim);
-else if (!fresh) text(w, "まだ今日の反映がありません", 9, C.dim);
-else { const at = new Date(data.at); text(w, "反映 "+pad(at.getHours())+":"+pad(at.getMinutes()), 9, C.dim); }
 
-if (config.runsInWidget) Script.setWidget(w);
-else await w.presentMedium();
+if (config.runsInWidget) {
+  Script.setWidget(buildWidget());
+} else {
+  await openGame();
+}
 Script.complete();
