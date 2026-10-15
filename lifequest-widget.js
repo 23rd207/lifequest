@@ -143,27 +143,27 @@ function writeSave(str){ try { JSON.parse(str); fm.writeString(SAVE, str); } cat
 /* ---- iPhoneのカレンダー(シフトボード・TimeTree などが書き込んだ予定も含む) ---- */
 const SKIP_CAL = /祝日|休日|Holiday|誕生日|Birthday/i;
 const SHIFT_RE = /シフト|バイト|出勤|勤務|shift/i;
+// ゲームの1日(朝4時〜翌朝4時)の予定。offset 0 = 今日、1 = 明日
+// 終日の予定は「その日付」のものだけにする(翌日の終日予定が混ざらないように)
+async function eventsForDay(offset){
+  const now = new Date();
+  const gd = gameDate(now);
+  const day = new Date(gd.getFullYear(), gd.getMonth(), gd.getDate() + offset);
+  const ds = ymd(day);
+  const start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), DAY_START);
+  const end = new Date(start.getTime() + 24*3600e3);
+  const evs = await CalendarEvent.between(new Date(day.getFullYear(), day.getMonth(), day.getDate()), end, []);
+  return evs.filter(e => !SKIP_CAL.test(e.calendar ? e.calendar.title : ""))
+    .filter(e => e.isAllDay
+      ? ymd(e.startDate) <= ds && e.endDate.getTime() > day.getTime()
+      : e.endDate.getTime() > start.getTime() && e.startDate.getTime() < end.getTime())
+    .sort((a,b) => (a.isAllDay ? 0 : 1) - (b.isAllDay ? 0 : 1) || a.startDate - b.startDate);
+}
 async function todayEvents(){
-  try {
-    const now = new Date();
-    const start = gameDate(now); start.setHours(DAY_START, 0, 0, 0);
-    const end = new Date(start.getTime() + 24*3600e3);
-    const evs = await CalendarEvent.between(start, end, []);
-    return evs.filter(e => !SKIP_CAL.test(e.calendar ? e.calendar.title : ""))
-      .filter(e => e.endDate.getTime() > start.getTime())
-      .slice(0, 12)
-      .map(mapEvent);
-  } catch(e) { return null; }
+  try { return (await eventsForDay(0)).slice(0, 12).map(mapEvent); } catch(e) { return null; }
 }
 async function tomorrowEvents(){
-  try {
-    const now = new Date();
-    const start = gameDate(now); start.setHours(DAY_START, 0, 0, 0); start.setDate(start.getDate() + 1);
-    const end = new Date(start.getTime() + 24*3600e3);
-    const evs = await CalendarEvent.between(start, end, []);
-    return evs.filter(e => !SKIP_CAL.test(e.calendar ? e.calendar.title : ""))
-      .sort((a,b) => (a.isAllDay ? 0 : 1) - (b.isAllDay ? 0 : 1) || a.startDate - b.startDate).map(mapEvent);
-  } catch(e) { return []; }
+  try { return (await eventsForDay(1)).map(mapEvent); } catch(e) { return []; }
 }
 // 編集・削除のために、読み込んだ予定を覚えておく(くり返し予定は日時で区別)
 const eventMap = new Map();
