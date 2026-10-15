@@ -170,11 +170,13 @@ async function loadReminders(){
       return r.dueDateIncludesTime ? r.dueDate.getTime() < rangeEnd.getTime() : ymd(r.dueDate) <= lastDay;
     };
     const overdue = r => r.dueDateIncludesTime ? r.dueDate.getTime() < now.getTime() : ymd(r.dueDate) < gds;
-    const allOpen = await Reminder.allIncomplete();
+    // 「ほしいもの・したいこと」はショップで扱うので、クエストには出さない
+    const notWish = r => !/ほしいもの|欲しいもの|したいこと/.test(r.calendar ? r.calendar.title : "");
+    const allOpen = (await Reminder.allIncomplete()).filter(notWish);
     const open = allOpen.filter(dueToday);
     remInfo = { all: allOpen.length, dated: allOpen.filter(r => !!r.dueDate).length, inRange: open.length, ver: 3 };
     let doneToday = [];
-    try { doneToday = (await Reminder.completedToday()).filter(r => !r.dueDate || dueToday(r)); } catch(e) {}
+    try { doneToday = (await Reminder.completedToday()).filter(notWish).filter(r => !r.dueDate || dueToday(r)); } catch(e) {}
     const byDue = (a, b) => (a.dueDate ? a.dueDate.getTime() : 0) - (b.dueDate ? b.dueDate.getTime() : 0);
     const all = open.sort(byDue).slice(0, 40).concat(doneToday);
     remMap.clear();
@@ -185,6 +187,33 @@ async function loadReminders(){
         list: r.calendar ? r.calendar.title : "", priority: r.priority || 0, completed: !!r.isCompleted };
     });
   } catch(e) { remInfo = { error: String(e), ver: 3 }; return null; }
+}
+
+/* ---- ごほうびショップ ⇄ リマインダー「ほしいもの・したいこと」 ---- */
+const WISH_RE = /ほしいもの|欲しいもの|したいこと/;
+const WISH_NAME = "ほしいもの・したいこと";
+const PRICE_RE = /([0-9０-９]{1,6})\s*[GＧg](?![A-Za-z])/;
+const wishMap = new Map();
+let wishCal = null;
+function toHalf(str){ return String(str).replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)); }
+async function loadWishes(){
+  try {
+    const cals = await Calendar.forReminders();
+    wishCal = cals.find(c => WISH_RE.test(c.title)) || null;
+    if (!wishCal) return null;
+    const items = await Reminder.allIncomplete([wishCal]);
+    wishMap.clear();
+    return items.map(r => {
+      wishMap.set("w" + hash(String(r.identifier)).toString(36), r);
+      const m = PRICE_RE.exec(r.notes || "") || PRICE_RE.exec(r.title || "");
+      const title = (r.title || "").replace(PRICE_RE, "").trim();
+      return { id: r.identifier, title: title || r.title, price: m ? Number(toHalf(m[1])) : 100, priced: !!m };
+    });
+  } catch(e) { return null; }
+}
+function setPriceInNotes(notes, price){
+  const n = notes || "";
+  return PRICE_RE.test(n) ? n.replace(PRICE_RE, price + "G") : (n ? n + "\n" : "") + price + "G";
 }
 
 /* ---- ゲームを開く ---- */
@@ -210,7 +239,7 @@ async function openGame(){
     return;
   }
   const saved = loadSave();
-  const [events, month, rems] = [await todayEvents(), await monthEvents(), await loadReminders()];
+  const [events, month, rems, wishes] = [await todayEvents(), await monthEvents(), await loadReminders(), await loadWishes()];
   let remCals = [];
   try {
     const def = await Calendar.defaultForReminders();
@@ -219,7 +248,8 @@ async function openGame(){
   const js = v => JSON.stringify(v).replace(/</g, "\\u003c");
   const boot = "<script>window.__LQ_HOST__='scriptable';window.__LQ_STATE__=" + js(saved)
     + ";window.__LQ_EVENTS__=" + js(events) + ";window.__LQ_MONTH__=" + js(month)
-    + ";window.__LQ_REMS__=" + js(rems) + ";window.__LQ_REMLISTS__=" + js(remCals.map(c => c.title)) + ";window.__LQ_REMINFO__=" + js(remInfo) + ";</script>";
+    + ";window.__LQ_REMS__=" + js(rems) + ";window.__LQ_REMLISTS__=" + js(remCals.map(c => c.title)) + ";window.__LQ_REMINFO__=" + js(remInfo) + ";window.__LQ_WISHES__=" + js(wishes)
+    + ";window.__LQ_WISHLIST__=" + js(wishCal ? wishCal.title : "") + ";</script>";
   html = html.replace("<head>", "<head>" + boot)
     // フォントの読み込みを待たずに表示する
     .replace(/<link rel="stylesheet" href="(https:\/\/fonts\.googleapis\.com[^"]+)">/, '<link rel="stylesheet" href="$1" media="print" onload="this.media=\'all\'">');
@@ -236,12 +266,30 @@ async function openGame(){
     let r = null;
     try { r = JSON.parse(await wv.evaluateJavaScript(TAKE, false)); } catch(e) { return; }
     if (r.s) writeSave(r.s);
-    let added = false, remAdded = false;
+    let added = false, remAdded = false, wishChanged = false;
     for (const op of r.o || []) {
       try {
         if (op.type === "rem") {
           const rem = remMap.get(op.id);
           if (rem) { rem.isCompleted = !!op.done; rem.save(); }
+        } else if (op.type === "buyWish") {
+          const r = wishMap.get(op.id);
+          if (r) { r.isCompleted = true; r.save(); }
+        } else if (op.type === "setWishPrice") {
+          const r = wishMap.get(op.id);
+          if (r) { r.notes = setPriceInNotes(r.notes, op.price); r.save(); }
+        } else if (op.type === "addWish") {
+          if (wishCal) {
+            const r = new Reminder();
+            r.title = String(op.title || "ほしいもの");
+            r.notes = op.price + "G";
+            r.calendar = wishCal;
+            r.save();
+            wishChanged = true;
+          }
+        } else if (op.type === "makeWishList") {
+          if (!wishCal) { wishCal = await Calendar.createForReminders(WISH_NAME); }
+          wishChanged = true;
         } else if (op.type === "addRem") {
           const r = new Reminder();
           r.title = String(op.title || "リマインダー");
@@ -262,6 +310,9 @@ async function openGame(){
           added = true;
         }
       } catch(e) {}
+    }
+    if (wishChanged) {
+      try { const list = await loadWishes(); await wv.evaluateJavaScript("window.__lqSetWishes(" + js(list) + ");0", false); } catch(e) {}
     }
     if (remAdded) {
       try { const list = await loadReminders(); await wv.evaluateJavaScript("window.__lqSetRems(" + js(list) + ");0", false); } catch(e) {}

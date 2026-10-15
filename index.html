@@ -544,7 +544,7 @@ function askName(){
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 let tab="quest";
 try{tab=sessionStorage.getItem("lq.tab")||"quest"}catch(e){}
-let ui={addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
+let ui={priceEdit:"",addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
 const app=document.getElementById("app");
 
 function heroHTML(now){
@@ -818,21 +818,54 @@ function statusTab(){
   </section>`;
 }
 
-function shopTab(){
-  return `
-  <section class="win" aria-labelledby="h-shop">
-    <h2 class="win-title" id="h-shop"><b>ごほうびショップ</b><span>所持金 <span class="rew mono">${state.gold}G</span></span></h2>
-    <p class="note" style="margin:0 0 6px">ためたゴールドで、現実の自分にごほうびを。品物は自由に登録できます。</p>
-    ${state.rewards.length?`<ul class="qlist">${state.rewards.map(r=>`
-      <li class="q"><span class="cur" aria-hidden="true">▶</span><span class="q-t">${esc(r.t)}</span>
-        <button class="btn ${state.gold>=r.c?"go":""}" data-buy="${r.id}" ${state.gold>=r.c?"":"disabled"}>${r.c}G</button>
-        <div class="q-sub"><span>${state.gold>=r.c?"買える！":"あと "+(r.c-state.gold)+"G"}</span><button class="btn ghost small" data-rdel="${r.id}" style="margin-left:auto" aria-label="${esc(r.t)} を削除">削除</button></div></li>`).join("")}</ul>`
-      :`<div class="empty">品物がありません。追加してみよう。</div>`}
-    ${ui.addReward?`<form class="form" id="reward-form">
-      <label for="r-title">ごほうび<input id="r-title" maxlength="40" placeholder="例:映画を観にいく" required></label>
+/* ---------- ごほうびショップ ---------- */
+// リマインダーの「ほしいもの・したいこと」リスト(ウィジェットから開いたときだけ届く)
+let WISHES = Array.isArray(window.__LQ_WISHES__) ? window.__LQ_WISHES__ : null;
+const WISH_LIST = window.__LQ_WISHLIST__ || "";
+const boughtWishes = new Set();
+let wishListCreating = false;
+window.__lqSetWishes = function(list){ if(Array.isArray(list)){WISHES=list;wishListCreating=false} render(); };
+function wishQuests(){return (WISHES||[]).map(w=>({id:"w"+hash(String(w.id)).toString(36),t:w.title||"(名前なし)",c:w.price||100,priced:!!w.priced})).filter(w=>!boughtWishes.has(w.id))}
+function shopItem(r,kind){
+  const can=state.gold>=r.c;
+  return `<li class="q"><span class="cur" aria-hidden="true">▶</span><span class="q-t">${esc(r.t)}</span>
+    <button class="btn ${can?"go":""}" data-buy="${kind}:${r.id}" ${can?"":"disabled"}>${r.c}G</button>
+    <div class="q-sub"><span>${can?"買える！":"あと "+(r.c-state.gold)+"G"}</span>${kind==="wish"&&!r.priced?`<span>(値段は仮)</span>`:""}
+      ${kind==="wish"
+        ?(ui.priceEdit===r.id
+          ?`<form class="row" data-priceform="${r.id}" style="margin-left:auto;flex:0 1 auto;gap:6px"><input id="price-${r.id}" type="number" inputmode="numeric" min="1" max="99999" value="${r.c}" style="width:6em;background:#070a22;border:2px solid var(--dim);border-radius:4px;padding:4px 6px;font-size:16px" aria-label="値段"><button class="btn small go" type="submit">決定</button></form>`
+          :`<button class="btn ghost small" data-price="${r.id}" style="margin-left:auto" aria-label="${esc(r.t)} の値段を変える">値段を変える</button>`)
+        :`<button class="btn ghost small" data-rdel="${r.id}" style="margin-left:auto" aria-label="${esc(r.t)} を削除">削除</button>`}
+    </div></li>`;
+}
+function rewardForm(toList){
+  return `<form class="form" id="reward-form">
+      <label for="r-title">${toList?"ほしいもの・したいこと":"ごほうび"}<input id="r-title" maxlength="60" placeholder="例:新しいイヤホン / 温泉に行く" required></label>
       <label for="r-cost">ねだん(G)<input id="r-cost" type="number" inputmode="numeric" min="1" max="99999" value="100" required></label>
+      ${toList?`<p class="note" style="margin:0">リマインダーの「${esc(WISH_LIST)}」に追加されます。値段はメモ欄に「100G」と入ります。</p>`:""}
       <div class="row"><button class="btn ghost" type="button" id="cancel-reward">やめる</button><button class="btn go" type="submit">登録する</button></div>
-    </form>`:`<div style="margin-top:8px"><button class="btn" id="open-reward">＋ ごほうびを追加</button></div>`}
+    </form>`;
+}
+function shopTab(){
+  const linked=IN_WIDGET_APP&&WISHES!==null;
+  const wishes=wishQuests();
+  const head=`<h2 class="win-title" id="h-shop"><b>ごほうびショップ</b><span>所持金 <span class="rew mono">${state.gold}G</span></span></h2>`;
+  const local=state.rewards.length?`<ul class="qlist">${state.rewards.map(r=>shopItem(r,"local")).join("")}</ul>`:"";
+  if(linked){
+    return `<section class="win" aria-labelledby="h-shop">${head}
+      <p class="note" style="margin:0 0 6px">リマインダーの「${esc(WISH_LIST)}」と連動中。買うとリマインダーでも完了になります。値段はリマインダーのメモ欄に「300G」のように書いても変えられます。</p>
+      ${wishes.length?`<ul class="qlist">${wishes.map(r=>shopItem(r,"wish")).join("")}</ul>`:`<div class="empty">リストに未完了の項目がありません。</div>`}
+      ${ui.addReward?rewardForm(true):`<div style="margin-top:8px"><button class="btn" id="open-reward">＋ ほしいもの・したいことを追加</button></div>`}
+    </section>
+    ${local?`<section class="win" aria-labelledby="h-local"><h2 class="win-title" id="h-local"><b>ゲーム内のごほうび</b></h2>${local}</section>`:""}`;
+  }
+  return `<section class="win" aria-labelledby="h-shop">${head}
+    <p class="note" style="margin:0 0 6px">ためたゴールドで、現実の自分にごほうびを。品物は自由に登録できます。</p>
+    ${local||`<div class="empty">品物がありません。追加してみよう。</div>`}
+    ${ui.addReward?rewardForm(false):`<div style="margin-top:8px"><button class="btn" id="open-reward">＋ ごほうびを追加</button></div>`}
+    ${IN_WIDGET_APP?`<div class="form"><p class="note" style="margin:0">リマインダーに「ほしいもの・したいこと」リストがありません。作るとショップと連動します。</p>
+      <div class="row"><button class="btn" id="make-wishlist" ${wishListCreating?"disabled":""}>${wishListCreating?"作成中…":"リストを作って連動する"}</button></div></div>`
+      :`<p class="note" style="margin:8px 0 0">ウィジェットから開くと、リマインダーの「ほしいもの・したいこと」リストと連動できます。</p>`}
   </section>`;
 }
 
@@ -954,10 +987,17 @@ app.addEventListener("click",e=>{
     b.parentElement.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));return}
   if(b.dataset.del){state.custom=state.custom.filter(c=>c.id!==b.dataset.del);save();render();return}
   if(b.dataset.rdel){state.rewards=state.rewards.filter(r=>r.id!==b.dataset.rdel);save();render();return}
-  if(b.dataset.buy){const r=state.rewards.find(x=>x.id===b.dataset.buy);if(!r||state.gold<r.c)return;
-    state.gold-=r.c;state.log.unshift({t:"ごほうび購入:"+r.t,xp:0,g:-r.c,ts:Date.now()});save();render();
+  if(b.dataset.buy){
+    const [kind,id]=b.dataset.buy.split(":");
+    const r=kind==="wish"?wishQuests().find(x=>x.id===id):state.rewards.find(x=>x.id===id);
+    if(!r||state.gold<r.c)return;
+    state.gold-=r.c;state.log.unshift({t:"ごほうび購入:"+r.t,xp:0,g:-r.c,ts:Date.now()});state.log=state.log.slice(0,40);
+    if(kind==="wish"){boughtWishes.add(id);pushOp({type:"buyWish",id})}
+    save();render();
     say([`「${r.t}」を 手に入れた！`,"いまこそ 現実で使うとき。"]);return}
+  if(b.dataset.price){ui.priceEdit=b.dataset.price;render();const el=document.getElementById("price-"+b.dataset.price);if(el){el.focus();el.select()}return}
   switch(b.id){
+    case"make-wishlist":wishListCreating=true;pushOp({type:"makeWishList"});render();break;
     case"open-rem":ui.addRem=true;render();document.getElementById("rem-title").focus();break;
     case"cancel-rem":ui.addRem=false;render();break;
     case"open-ev":ui.addEvent=true;render();document.getElementById("ev-title").focus();break;
@@ -981,9 +1021,19 @@ app.addEventListener("submit",e=>{
     const t=document.getElementById("q-title").value.trim();if(!t)return;
     state.custom.push({id:uid(),t:t.slice(0,40),s:ui.qStat,d:ui.qDiff,r:ui.qRep,doneOn:"",got:null});
     ui.addQuest=false;save();render();say([`クエスト「${t}」を 受注した！`]);
+  }else if(e.target.dataset&&e.target.dataset.priceform){
+    const id=e.target.dataset.priceform;const c=Math.max(1,Math.min(99999,parseInt(document.getElementById("price-"+id).value,10)||0));
+    const w=(WISHES||[]).find(x=>"w"+hash(String(x.id)).toString(36)===id);
+    if(w&&c){w.price=c;w.priced=true;pushOp({type:"setWishPrice",id,price:c})}
+    ui.priceEdit="";render();
   }else if(e.target.id==="reward-form"){
     const t=document.getElementById("r-title").value.trim();const c=Math.max(1,Math.min(99999,parseInt(document.getElementById("r-cost").value,10)||0));
-    if(!t||!c)return;state.rewards.push({id:uid(),t:t.slice(0,40),c});ui.addReward=false;save();render();
+    if(!t||!c)return;
+    if(IN_WIDGET_APP&&WISHES!==null){
+      pushOp({type:"addWish",title:t.slice(0,60),price:c});
+      WISHES=WISHES.concat([{id:"pending"+Date.now(),title:t,price:c,priced:true}]);
+      ui.addReward=false;render();say([`「${t}」を リストに追加した！`]);
+    }else{state.rewards.push({id:uid(),t:t.slice(0,40),c});ui.addReward=false;save();render();}
   }else if(e.target.id==="rem-form"){
     const title=document.getElementById("rem-title").value.trim();if(!title)return;
     let due=null,hasTime=false,label="期限なし";
