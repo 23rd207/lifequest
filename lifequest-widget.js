@@ -45,6 +45,7 @@ const TITLES = [[1,"村人"],[3,"見習い冒険者"],[6,"冒険者"],[10,"熟�
 
 /* ---- ゲームと同じ計算 ---- */
 const pad = n => String(n).padStart(2, "0");
+function hm(ms){ const d = new Date(ms); return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
 function ymd(d){ return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
 function gameDate(now){ return new Date(now.getTime() - DAY_START*3600e3); }
 function today(now){ return ymd(gameDate(now)); }
@@ -84,6 +85,23 @@ const HTML_CACHE = fm.joinPath(dir, "lifequest-game.html");
 function loadSave(){ try { return fm.fileExists(SAVE) ? fm.readString(SAVE) : null; } catch(e){ return null; } }
 function writeSave(str){ try { JSON.parse(str); fm.writeString(SAVE, str); } catch(e){} }
 
+/* ---- iPhoneのカレンダー(シフトボード・TimeTree などが書き込んだ予定も含む) ---- */
+const SKIP_CAL = /祝日|休日|Holiday|誕生日|Birthday/i;
+const SHIFT_RE = /シフト|バイト|出勤|勤務|shift/i;
+async function todayEvents(){
+  try {
+    const now = new Date();
+    const start = gameDate(now); start.setHours(DAY_START, 0, 0, 0);
+    const end = new Date(start.getTime() + 24*3600e3);
+    const evs = await CalendarEvent.between(start, end, []);
+    return evs.filter(e => !SKIP_CAL.test(e.calendar ? e.calendar.title : ""))
+      .filter(e => e.endDate.getTime() > start.getTime())
+      .slice(0, 12)
+      .map(e => ({ id: e.identifier, title: e.title, start: e.startDate.getTime(), end: e.endDate.getTime(),
+        allDay: e.isAllDay, cal: e.calendar ? e.calendar.title : "" }));
+  } catch(e) { return null; }
+}
+
 /* ---- ゲームを開く ---- */
 const wait = ms => new Promise(r => Timer.schedule(ms, false, r));
 async function fetchGame(timeout){
@@ -106,7 +124,9 @@ async function openGame(){
     return;
   }
   const saved = loadSave();
-  const boot = "<script>window.__LQ_HOST__='scriptable';window.__LQ_STATE__=" + JSON.stringify(saved) + ";</script>";
+  const events = await todayEvents();
+  const boot = "<script>window.__LQ_HOST__='scriptable';window.__LQ_STATE__=" + JSON.stringify(saved).replace(/</g, "\\u003c")
+    + ";window.__LQ_EVENTS__=" + JSON.stringify(events).replace(/</g, "\\u003c") + ";</script>";
   html = html.replace("<head>", "<head>" + boot)
     // フォントの読み込みを待たずに表示する
     .replace(/<link rel="stylesheet" href="(https:\/\/fonts\.googleapis\.com[^"]+)">/, '<link rel="stylesheet" href="$1" media="print" onload="this.media=\'all\'">');
@@ -133,7 +153,7 @@ async function openGame(){
 }
 
 /* ---- ウィジェット ---- */
-function buildWidget(){
+async function buildWidget(){
   const now = new Date();
   const t = today(now);
   let st = null; try { st = JSON.parse(loadSave() || "null"); } catch(e) {}
@@ -142,6 +162,11 @@ function buildWidget(){
   const done = new Set(st && st.daily && st.daily.date === t ? Object.keys(st.daily.done || {}) : []);
   const quests = ids.map(id => POOL.find(p => p.id === id)).filter(Boolean);
   const nDone = quests.filter(q => done.has(q.id)).length;
+  const evs = (await todayEvents()) || [];
+  const evDone = st && st.events && st.events.date === t ? st.events.done || {} : {};
+  const evId = e => "e" + hash(String(e.id) + "|" + e.start).toString(36);
+  const nextEv = evs.filter(e => !evDone[evId(e)] && (e.allDay || e.end > now.getTime()))
+    .sort((a,b) => (a.allDay ? 0 : a.start) - (b.allDay ? 0 : b.start));
   const streakAlive = st && st.streak && (st.streakDay === t || st.streakDay === ymd(new Date(gameDate(now).getTime() - 864e5)));
   const streak = streakAlive ? st.streak : 0;
   const week = st && st.week && st.week.key === weekKey(now) ? st.week.n : 0;
@@ -200,6 +225,16 @@ function buildWidget(){
       w.addSpacer(10);
       text(w, "ウィークリー "+Math.min(week, WEEK_GOAL)+"/"+WEEK_GOAL, 10, C.dim);
       bar(w, week/WEEK_GOAL, 9);
+      if (nextEv.length) {
+        w.addSpacer(8);
+        text(w, "今日の予定クエスト", 10, C.dim);
+        for (const e of nextEv.slice(0, 3)) {
+          const row = w.addStack(); row.spacing = 5;
+          const shift = SHIFT_RE.test(e.title || "") || SHIFT_RE.test(e.cal || "");
+          text(row, e.allDay ? "終日" : hm(e.start), 11, shift ? C.gold : C.dim, true);
+          text(row, e.title || "予定", 12, C.ink);
+        }
+      }
       if (customs.length) {
         w.addSpacer(8);
         text(w, "マイクエスト", 10, C.dim);
@@ -211,13 +246,17 @@ function buildWidget(){
       }
     }
     w.addSpacer();
+    if (family === "medium" && nextEv.length) {
+      const e = nextEv[0];
+      text(w, "次の予定 " + (e.allDay ? "終日" : hm(e.start)) + " " + (e.title || ""), 10, C.dim);
+    }
   }
   if (!st) text(w, "タップして冒険をはじめる", 9, C.dim);
   return w;
 }
 
 if (config.runsInWidget) {
-  Script.setWidget(buildWidget());
+  Script.setWidget(await buildWidget());
 } else {
   try { await openGame(); }
   catch(e) {

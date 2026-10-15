@@ -308,6 +308,7 @@ function fresh(){
     stats:{body:0,int:0,mind:0,bond:0},
     streak:0, streakDay:"", dayCount:{date:"",n:0},
     daily:{date:"",ids:[],done:{},bonus:false},
+    events:{date:"",done:{}},
     week:{key:"",n:0,bonus:false},
     custom:[
       {id:"c1",t:"(例)メールの返信をすませる",s:"int",d:1,r:"daily",doneOn:"",got:null},
@@ -327,6 +328,7 @@ function normalize(s){
   const o=Object.assign(f,s);
   o.stats=Object.assign(fresh().stats,s.stats||{});
   o.daily=Object.assign(fresh().daily,s.daily||{});
+  o.events=Object.assign(fresh().events,s.events||{});
   o.week=Object.assign(fresh().week,s.week||{});
   o.dayCount=Object.assign(fresh().dayCount,s.dayCount||{});
   if(!Array.isArray(o.custom))o.custom=[];
@@ -395,6 +397,7 @@ async function copyText(text,okLines){
 function rollover(now=new Date()){
   const t=today(now);let changed=false;
   if(state.daily.date!==t){state.daily={date:t,ids:dailyFor(t),done:{},bonus:false};changed=true}
+  if(state.events.date!==t){state.events={date:t,done:{}};changed=true}
   if(state.dayCount.date!==t){state.dayCount={date:t,n:0};changed=true}
   const wk=weekKey(now);
   if(state.week.key!==wk){state.week={key:wk,n:0,bonus:false};changed=true}
@@ -486,6 +489,29 @@ function heroHTML(now){
   </section>`;
 }
 
+/* ---------- カレンダーの予定(ウィジェットから開いたときだけ届く) ---------- */
+const EVENTS = Array.isArray(window.__LQ_EVENTS__) ? window.__LQ_EVENTS__ : null;
+const SHIFT_RE = /シフト|バイト|出勤|勤務|shift/i;
+function eventQuests(){
+  if(!EVENTS)return[];
+  return EVENTS.map(e=>{
+    const shift=SHIFT_RE.test(e.title||"")||SHIFT_RE.test(e.cal||"");
+    return {id:"e"+hash(String(e.id)+"|"+e.start).toString(36),t:e.title||"(タイトルなしの予定)",
+      s:shift?"body":"mind",d:shift?3:2,shift,start:e.start,end:e.end,allDay:!!e.allDay,cal:e.cal||""};
+  }).sort((a,b)=>(a.allDay?0:a.start)-(b.allDay?0:b.start));
+}
+function hm(ms){const d=new Date(ms);return pad(d.getHours())+":"+pad(d.getMinutes())}
+function eventSection(now){
+  const qs=eventQuests();
+  const dn=qs.filter(q=>state.events.done[q.id]).length;
+  return `<section class="win" aria-labelledby="h-ev">
+    <h2 class="win-title" id="h-ev"><b>今日の予定クエスト</b><span class="mono">${qs.length?dn+" / "+qs.length:""}</span></h2>
+    ${qs.length?`<ul class="qlist">${qs.map(q=>questRow(q,"event",now)).join("")}</ul>`
+      :`<div class="empty">iPhoneのカレンダーに、今日の予定はありません。</div>`}
+    <p class="note" style="margin:6px 0 0">iPhoneのカレンダーの予定がクエストになります。シフトやバイトの予定は報酬が大きめです。予定の時間になると達成できます。</p>
+  </section>`;
+}
+
 function questStateFor(q,now){
   if(q.w==="any")return{st:"open"};
   const w=WINDOWS[q.w],h=gameHour(now);
@@ -497,7 +523,7 @@ function questStateFor(q,now){
 function questRow(q,kind,now){
   const D=DIFF[q.d], S=STATS[q.s];
   let right, cls="q", extra="";
-  const done = kind==="daily" ? !!state.daily.done[q.id] : isDoneNow(q);
+  const done = kind==="daily" ? !!state.daily.done[q.id] : kind==="event" ? !!state.events.done[q.id] : isDoneNow(q);
   if(done){
     cls+=" done";
     right=`<button class="stamp" data-undo="${kind}:${q.id}" aria-label="${esc(q.t)} の達成を取り消す">CLEAR</button>`;
@@ -506,10 +532,15 @@ function questRow(q,kind,now){
     if(s.st==="locked"){cls+=" locked";right=`<div class="wait">受注まで<br><span class="mono">${s.wait}</span></div>`}
     else if(s.st==="expired"){cls+=" expired";right=`<span class="expired-tag">期限切れ</span>`}
     else{right=`<button class="btn go" data-do="daily:${q.id}">達成</button>`;if(s.left)extra=`<span>のこり ${s.left}</span>`}
+  }else if(kind==="event"){
+    if(!q.allDay&&now.getTime()<q.start){cls+=" locked";right=`<div class="wait">開始まで<br><span class="mono">${fmtHM(q.start-now.getTime())}</span></div>`}
+    else right=`<button class="btn go" data-do="event:${q.id}">達成</button>`;
   }else{
     right=`<button class="btn go" data-do="custom:${q.id}">達成</button>`;
   }
-  const when = kind==="daily" ? `<span class="chip">${WINDOWS[q.w].n}</span>` : `<span class="chip">${(REPEAT[q.r]||REPEAT.daily).chip}</span>`;
+  const when = kind==="daily" ? `<span class="chip">${WINDOWS[q.w].n}</span>`
+    : kind==="event" ? `<span class="chip">${q.allDay?"終日":hm(q.start)+"〜"+hm(q.end)}</span>${q.shift?`<span class="chip rew">シフト</span>`:""}`
+    : `<span class="chip">${(REPEAT[q.r]||REPEAT.daily).chip}</span>`;
   const del = kind==="custom" ? `<button class="btn ghost small" data-del="${q.id}" aria-label="${esc(q.t)} を削除" style="margin-left:auto">削除</button>`:"";
   return `<li class="${cls}"><span class="cur" aria-hidden="true">▶</span><span class="q-t">${esc(q.t)}</span>${right}
     <div class="q-sub">${when}<span class="st-${q.s}">${S.n}</span><span>${D.n}</span><span class="rew">+${D.xp}EXP ${D.g}G</span>${extra}${del}</div></li>`;
@@ -528,6 +559,8 @@ function questTab(now){
     <div class="bonus ${state.daily.bonus?"got":""}">${state.daily.bonus?"★ オールクリア報酬を受け取った！":"ぜんぶ達成で ボーナス +"+ALL_CLEAR.xp+"EXP "+ALL_CLEAR.g+"G"}</div>
     <p class="note" style="margin:6px 0 0">ミッションは毎朝4時に入れ替わります。朝・夜のミッションはその時間帯にしか受注できません。</p>
   </section>
+
+  ${EVENTS?eventSection(now):(IN_WIDGET_APP?`<section class="win"><h2 class="win-title"><b>今日の予定クエスト</b></h2><div class="empty">カレンダーを読めませんでした。iPhoneの「設定」→「Scriptable」→「カレンダー」を「フルアクセス」にしてください。</div></section>`:"")}
 
   <section class="win" aria-labelledby="h-week">
     <h2 class="win-title" id="h-week"><b>ウィークリー</b><span class="mono">${wk} / ${WEEK_GOAL}</span></h2>
@@ -638,13 +671,16 @@ function complete(kind,id){
   if(kind==="daily"){
     q=POOL.find(p=>p.id===id);if(!q||state.daily.done[id])return;
     if(questStateFor(q,new Date()).st!=="open")return;
+  }else if(kind==="event"){
+    q=eventQuests().find(e=>e.id===id);if(!q||state.events.done[id])return;
+    if(!q.allDay&&Date.now()<q.start)return;
   }else{
     q=state.custom.find(c=>c.id===id);if(!q||isDoneNow(q))return;
   }
   const D=DIFF[q.d];label=q.t;
   const lines=[`「${q.t}」を 達成した！`,`${D.xp} の経験値と ${D.g}G を手に入れた。`];
   let lv=grant(D.xp,D.g,q.s,label);
-  if(kind==="daily")state.daily.done[id]=true;else q.doneOn=today();
+  if(kind==="daily")state.daily.done[id]=true;else if(kind==="event")state.events.done[id]=true;else q.doneOn=today();
   if(countDone(1))lines.push(`連続 ${state.streak}日目！ よくがんばった。`);
   if(kind==="daily"&&!state.daily.bonus&&state.daily.ids.every(i=>state.daily.done[i])){
     state.daily.bonus=true;lv=grant(ALL_CLEAR.xp,ALL_CLEAR.g,null,"デイリー オールクリア")||lv;
@@ -661,6 +697,7 @@ function undo(kind,id){
   let q,sameDay=true;
   if(kind==="daily"){q=POOL.find(p=>p.id===id);if(!q||!state.daily.done[id])return;delete state.daily.done[id];
     if(state.daily.bonus){state.daily.bonus=false;grant(ALL_CLEAR.xp,ALL_CLEAR.g,null,"デイリー オールクリア",-1)}}
+  else if(kind==="event"){q=eventQuests().find(e=>e.id===id);if(!q||!state.events.done[id])return;delete state.events.done[id]}
   else{q=state.custom.find(c=>c.id===id);if(!q||!isDoneNow(q))return;sameDay=q.doneOn===today();q.doneOn=""}
   const D=DIFF[q.d];grant(D.xp,D.g,q.s,q.t,-1);countDone(-1,sameDay);
   if(state.week.bonus&&state.week.n<WEEK_GOAL){state.week.bonus=false;grant(WEEK_BONUS.xp,WEEK_BONUS.g,null,"ウィークリー達成",-1)}
