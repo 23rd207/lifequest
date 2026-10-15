@@ -157,6 +157,7 @@ async function monthEvents(){
 /* ---- リマインダー(期限が2週間以内・期限切れ・今日完了したもの) ---- */
 const REM_DAYS = 14;
 const remMap = new Map();
+let remInfo = null; // 読み込みの内訳(ゲームに表示して原因を探す用)
 async function loadReminders(){
   try {
     const now = new Date();
@@ -169,7 +170,9 @@ async function loadReminders(){
       return r.dueDateIncludesTime ? r.dueDate.getTime() < rangeEnd.getTime() : ymd(r.dueDate) <= lastDay;
     };
     const overdue = r => r.dueDateIncludesTime ? r.dueDate.getTime() < now.getTime() : ymd(r.dueDate) < gds;
-    const open = (await Reminder.allIncomplete()).filter(dueToday);
+    const allOpen = await Reminder.allIncomplete();
+    const open = allOpen.filter(dueToday);
+    remInfo = { all: allOpen.length, dated: allOpen.filter(r => !!r.dueDate).length, inRange: open.length, ver: 3 };
     let doneToday = [];
     try { doneToday = (await Reminder.completedToday()).filter(r => !r.dueDate || dueToday(r)); } catch(e) {}
     const byDue = (a, b) => (a.dueDate ? a.dueDate.getTime() : 0) - (b.dueDate ? b.dueDate.getTime() : 0);
@@ -181,7 +184,7 @@ async function loadReminders(){
         hasTime: !!r.dueDateIncludesTime, overdue: !r.isCompleted && !!r.dueDate && overdue(r),
         list: r.calendar ? r.calendar.title : "", priority: r.priority || 0, completed: !!r.isCompleted };
     });
-  } catch(e) { return null; }
+  } catch(e) { remInfo = { error: String(e), ver: 3 }; return null; }
 }
 
 /* ---- ゲームを開く ---- */
@@ -216,7 +219,7 @@ async function openGame(){
   const js = v => JSON.stringify(v).replace(/</g, "\\u003c");
   const boot = "<script>window.__LQ_HOST__='scriptable';window.__LQ_STATE__=" + js(saved)
     + ";window.__LQ_EVENTS__=" + js(events) + ";window.__LQ_MONTH__=" + js(month)
-    + ";window.__LQ_REMS__=" + js(rems) + ";window.__LQ_REMLISTS__=" + js(remCals.map(c => c.title)) + ";</script>";
+    + ";window.__LQ_REMS__=" + js(rems) + ";window.__LQ_REMLISTS__=" + js(remCals.map(c => c.title)) + ";window.__LQ_REMINFO__=" + js(remInfo) + ";</script>";
   html = html.replace("<head>", "<head>" + boot)
     // フォントの読み込みを待たずに表示する
     .replace(/<link rel="stylesheet" href="(https:\/\/fonts\.googleapis\.com[^"]+)">/, '<link rel="stylesheet" href="$1" media="print" onload="this.media=\'all\'">');

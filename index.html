@@ -619,6 +619,15 @@ function remDueLabel(q){
   if(days===1)return"明日"+(q.hasTime?" "+hm(q.due):"")+"まで";
   return (d.getMonth()+1)+"/"+d.getDate()+"("+WD[d.getDay()]+")まで あと"+days+"日";
 }
+const REM_INFO = window.__LQ_REMINFO__ || null;
+function remInfoLine(){
+  if(!IN_WIDGET_APP)return"";
+  const i=REM_INFO;
+  const msg=!i?"ウィジェットのスクリプトが古いようです。最新のものに貼り直してください。"
+    :i.error?"読み込みエラー:"+i.error
+    :`未完了 ${i.all}件(期限あり ${i.dated}件)のうち、2週間以内 ${i.inRange}件を表示中`;
+  return `<p class="note" style="margin:6px 0 0;color:var(--dim)">${esc(msg)}</p>`;
+}
 function remSection(now){
   const qs=remQuests();
   const dn=qs.filter(q=>state.rems.done[q.id]).length;
@@ -626,6 +635,7 @@ function remSection(now){
     <h2 class="win-title" id="h-rem"><b>リマインダー</b><span class="mono">${qs.length?dn+" / "+qs.length:""}</span></h2>
     ${qs.length?`<ul class="qlist">${qs.map(q=>questRow(q,"rem",now)).join("")}</ul>`
       :`<div class="empty">2週間以内に期限のリマインダーはありません。</div>`}
+    ${remInfoLine()}
     ${pendingRems.length?`<ul class="evlist" style="margin-top:4px">${pendingRems.map(r=>`<li><span class="t mono">${r.label}</span><span>${esc(r.title)} <small style="color:var(--dim)">(追加中)</small></span></li>`).join("")}</ul>`:""}
     ${ui.addRem?remForm():`<div style="margin-top:8px"><button class="btn" id="open-rem">＋ リマインダーを追加</button></div>`}
     <p class="note" style="margin:6px 0 0">期限が2週間以内のリマインダーと、期限切れのものが並びます。ここで達成すると、リマインダーアプリでも完了になります。</p>
@@ -723,7 +733,7 @@ function questTab(now){
 
   ${REMS?remSection(now):`<section class="win"><h2 class="win-title"><b>リマインダー</b></h2><div class="empty">${IN_WIDGET_APP
     ?"リマインダーを読めませんでした。iPhoneの「設定」→「Scriptable」→「リマインダー」をオンにして、もう一度ウィジェットから開いてください。"
-    :"リマインダーの表示と追加は、ホーム画面のウィジェットをタップして開いたゲームで使えます。"}</div></section>`}
+    :"リマインダーの表示と追加は、ホーム画面のウィジェットをタップして開いたゲームで使えます。"}</div>${remInfoLine()}</section>`}
 
   <section class="win" aria-labelledby="h-week">
     <h2 class="win-title" id="h-week"><b>ウィークリー</b><span class="mono">${wk} / ${WEEK_GOAL}</span></h2>
