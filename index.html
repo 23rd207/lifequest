@@ -581,7 +581,7 @@ function askName(){
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 let tab="quest";
 try{tab=sessionStorage.getItem("lq.tab")||"quest"}catch(e){}
-let ui={editEv:"",delConfirm:false,buyConfirm:"",priceEdit:"",addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
+let ui={addPay:false,editEv:"",delConfirm:false,buyConfirm:"",priceEdit:"",addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
 const app=document.getElementById("app");
 
 function heroHTML(now){
@@ -659,8 +659,16 @@ function remDueLabel(q){
 const REM_INFO = window.__LQ_REMINFO__ || null;
 // クレカ・支払いのリスト(ToDoではないので、クエストにしない)
 let PAYS = Array.isArray(window.__LQ_PAYS__) ? window.__LQ_PAYS__ : null;
+let PAY_LISTS = Array.isArray(window.__LQ_PAYLISTS__) ? window.__LQ_PAYLISTS__ : [];
+let pendingPays = [];
+window.__lqSetPays = function(list, lists){
+  if(Array.isArray(list)) PAYS = list;
+  if(Array.isArray(lists)) PAY_LISTS = lists;
+  pendingPays = pendingPays.filter(p => !(PAYS||[]).some(x => x.title===p.title));
+  render();
+};
 const paidNow = new Set();
-function payItems(){return (PAYS||[]).filter(p=>!paidNow.has(p.id)).sort((a,b)=>(a.due||9e15)-(b.due||9e15))}
+function payItems(){return (PAYS||[]).concat(pendingPays).filter(p=>!paidNow.has(p.id)).sort((a,b)=>(a.due||9e15)-(b.due||9e15))}
 function yen(n){return "¥"+Number(n).toLocaleString("ja-JP")}
 function payLine(p){
   const d=p.due?new Date(p.due):null,t=today();
@@ -668,18 +676,33 @@ function payLine(p){
   const when=!d?"日付なし":days<0?`<span style="color:var(--danger)">${d.getMonth()+1}/${d.getDate()} 過ぎています</span>`
     :days===0?`<span style="color:var(--gold)">今日</span>`:days===1?"明日":`${d.getMonth()+1}/${d.getDate()}(${WD[d.getDay()]}) あと${days}日`;
   return `<li class="q"><span class="cur" aria-hidden="true">¥</span><span class="q-t">${esc(p.title)}</span>
-    <button class="btn small" data-paid="${esc(String(p.id))}" aria-label="${esc(p.title)} を済にする">済</button>
+    ${p.pending?`<span class="rl" style="color:var(--dim)">追加中</span>`:`<button class="btn small" data-paid="${esc(String(p.id))}" aria-label="${esc(p.title)} を済にする">済</button>`}
     <div class="q-sub"><span>${when}</span>${p.amount?`<span class="rew">${yen(p.amount)}</span>`:""}${p.list?`<span>${esc(p.list)}</span>`:""}</div></li>`;
 }
 function paySection(){
-  if(!IN_WIDGET_APP||PAYS===null)return"";
+  if(!IN_WIDGET_APP)return `<section class="win" aria-labelledby="h-pay"><h2 class="win-title" id="h-pay"><b>支払い</b></h2>
+    <p class="note" style="margin:0">支払いの表示と追加は、ウィジェットから開いたゲームで使えます。</p></section>`;
   const items=payItems();
-  const total=items.filter(p=>p.amount&&p.due&&ymd(new Date(p.due)).slice(0,7)===today().slice(0,7)).reduce((a,p)=>a+p.amount,0);
+  const month=today().slice(0,7);
+  const total=items.filter(p=>p.amount&&p.due&&ymd(new Date(p.due)).slice(0,7)===month).reduce((a,p)=>a+p.amount,0);
   return `<section class="win" aria-labelledby="h-pay">
-    <h2 class="win-title" id="h-pay"><b>支払い・クレカ</b><span>${total?"今月 "+yen(total):""}</span></h2>
-    ${items.length?`<ul class="qlist">${items.slice(0,12).map(payLine).join("")}</ul>`:`<div class="empty">未完了の支払いはありません。</div>`}
-    <p class="note" style="margin:6px 0 0">リマインダーの支払い用リストです。クエストとは別なので、経験値はつきません。「済」を押すとリマインダーでも完了になります。金額はタイトルかメモに「12,000円」のように書くと出ます。</p>
+    <h2 class="win-title" id="h-pay"><b>支払い</b><span>${total?"今月 "+yen(total):""}</span></h2>
+    ${items.length?`<ul class="qlist">${items.slice(0,15).map(payLine).join("")}</ul>`:`<div class="empty">まだ支払いの予定はありません。</div>`}
+    ${ui.addPay?payForm():`<div style="margin-top:8px"><button class="btn" id="open-pay">＋ 支払いを追加</button></div>`}
+    <p class="note" style="margin:6px 0 0">リマインダーの支払い用リスト${PAY_LISTS.length?"(「"+PAY_LISTS.map(esc).join("」「")+"」)":""}と連動しています。クエストとは別なので経験値はつきません。「済」を押すとリマインダーでも完了になります。</p>
   </section>`;
+}
+function payForm(){
+  return `<form class="form" id="pay-form">
+    <label for="pay-title">なにの支払い<input id="pay-title" maxlength="60" placeholder="例:家賃 / 電気代 / 楽天カード" required></label>
+    <div class="row">
+      <label for="pay-date">支払日<input id="pay-date" type="date" value="${ui.calSel||today()}" required></label>
+      <label for="pay-amount">金額(円・なくてもOK)<input id="pay-amount" type="number" inputmode="numeric" min="0" max="99999999" placeholder="例:12000"></label>
+    </div>
+    ${PAY_LISTS.length?`<label for="pay-list">リスト<select id="pay-list">${PAY_LISTS.map(l=>`<option>${esc(l)}</option>`).join("")}${PAY_LISTS.includes("支払い")?"":`<option value="支払い">支払い(新しく作る)</option>`}</select></label>`:""}
+    ${PAY_LISTS.length?"":`<p class="note" style="margin:0">リマインダーに「支払い」リストを作って追加します。</p>`}
+    <div class="row"><button class="btn ghost" type="button" id="cancel-pay">やめる</button><button class="btn go" type="submit">追加する</button></div>
+  </form>`;
 }
 function remInfoLine(){
   if(!IN_WIDGET_APP)return"";
@@ -1098,6 +1121,8 @@ app.addEventListener("click",e=>{
   if(b.dataset.price){ui.priceEdit=b.dataset.price;render();const el=document.getElementById("price-"+b.dataset.price);if(el){el.focus();el.select()}return}
   switch(b.id){
     case"make-wishlist":wishListCreating=true;pushOp({type:"makeWishList"});render();break;
+    case"open-pay":ui.addPay=true;render();document.getElementById("pay-title").focus();break;
+    case"cancel-pay":ui.addPay=false;render();break;
     case"open-rem":ui.addRem=true;render();document.getElementById("rem-title").focus();break;
     case"cancel-rem":ui.addRem=false;render();break;
     case"open-ev":ui.addEvent=true;ui.editEv="";ui.evAllDay=false;render();document.getElementById("ev-title").focus();break;
@@ -1138,6 +1163,15 @@ app.addEventListener("submit",e=>{
       WISHES=WISHES.concat([{id:"pending"+Date.now(),title:t,price:c,priced:true}]);
       ui.addReward=false;render();say([`「${t}」を リストに追加した！`]);
     }else{state.rewards.push({id:uid(),t:t.slice(0,40),c});ui.addReward=false;save();render();}
+  }else if(e.target.id==="pay-form"){
+    const title=document.getElementById("pay-title").value.trim();if(!title)return;
+    const ds=document.getElementById("pay-date").value||today();
+    const amount=Math.max(0,parseInt(document.getElementById("pay-amount").value,10)||0);
+    const listEl=document.getElementById("pay-list");
+    const due=parseYmd(ds).getTime();
+    pushOp({type:"addPay",title:title.slice(0,60),due,amount,list:listEl?listEl.value:(PAY_LISTS[0]||"")});
+    pendingPays.push({id:"pp"+Date.now(),title,due,amount,list:listEl?listEl.value:(PAY_LISTS[0]||"支払い"),pending:true});
+    ui.addPay=false;render();say([`支払い「${title}」を 追加した！`]);
   }else if(e.target.id==="rem-form"){
     const title=document.getElementById("rem-title").value.trim();if(!title)return;
     let due=null,hasTime=false,label="期限なし";

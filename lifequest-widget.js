@@ -224,10 +224,12 @@ async function loadReminders(){
 const PAY_RE = /クレカ|クレジット|カード|支払|引き?落/;
 const YEN_RE = /([0-9０-９][0-9０-９,，]*)\s*円|[¥￥]\s*([0-9０-９][0-9０-９,，]*)/;
 const payMap = new Map();
+let payCals = [];
 async function loadPays(){
   try {
     const cals = (await Calendar.forReminders()).filter(c => PAY_RE.test(c.title));
-    if (!cals.length) return null;
+    payCals = cals;
+    if (!cals.length) return [];
     const items = await Reminder.allIncomplete(cals);
     payMap.clear();
     return items.slice(0, 60).map(r => {
@@ -301,7 +303,7 @@ async function openGame(){
   const boot = "<script>window.__LQ_HOST__='scriptable';window.__LQ_STATE__=" + js(saved)
     + ";window.__LQ_EVENTS__=" + js(events) + ";window.__LQ_MONTH__=" + js(month)
     + ";window.__LQ_REMS__=" + js(rems) + ";window.__LQ_REMLISTS__=" + js(remCals.map(c => c.title)) + ";window.__LQ_REMINFO__=" + js(remInfo) + ";window.__LQ_WISHES__=" + js(wishes)
-    + ";window.__LQ_WISHLIST__=" + js(wishCal ? wishCal.title : "") + ";window.__LQ_PAYS__=" + js(pays) + ";</script>";
+    + ";window.__LQ_WISHLIST__=" + js(wishCal ? wishCal.title : "") + ";window.__LQ_PAYS__=" + js(pays) + ";window.__LQ_PAYLISTS__=" + js(payCals.map(c => c.title)) + ";</script>";
   html = html.replace("<head>", "<head>" + boot)
     // フォントの読み込みを待たずに表示する
     .replace(/<link rel="stylesheet" href="(https:\/\/fonts\.googleapis\.com[^"]+)">/, '<link rel="stylesheet" href="$1" media="print" onload="this.media=\'all\'">');
@@ -318,12 +320,22 @@ async function openGame(){
     let r = null;
     try { r = JSON.parse(await wv.evaluateJavaScript(TAKE, false)); } catch(e) { return; }
     if (r.s) writeSave(r.s);
-    let added = false, remAdded = false, wishChanged = false;
+    let added = false, remAdded = false, wishChanged = false, payChanged = false;
     for (const op of r.o || []) {
       try {
         if (op.type === "rem") {
           const rem = remMap.get(op.id);
           if (rem) { rem.isCompleted = !!op.done; rem.save(); }
+        } else if (op.type === "addPay") {
+          let cal = payCals.find(c => c.title === op.list) || (op.list === "支払い" ? null : payCals[0]);
+          if (!cal) { cal = await Calendar.createForReminders("支払い"); payCals = payCals.concat([cal]); }
+          const r = new Reminder();
+          r.title = String(op.title || "支払い");
+          if (op.due) { r.dueDate = new Date(op.due); r.dueDateIncludesTime = false; }
+          if (op.amount) r.notes = Number(op.amount).toLocaleString("ja-JP") + "円";
+          r.calendar = cal;
+          r.save();
+          payChanged = true;
         } else if (op.type === "payDone") {
           const r = payMap.get(op.id);
           if (r) { r.isCompleted = true; r.save(); }
@@ -378,6 +390,9 @@ async function openGame(){
           added = true;
         }
       } catch(e) {}
+    }
+    if (payChanged) {
+      try { const list = await loadPays(); await wv.evaluateJavaScript("window.__lqSetPays(" + js(list) + "," + js(payCals.map(c => c.title)) + ");0", false); } catch(e) {}
     }
     if (wishChanged) {
       try { const list = await loadWishes(); await wv.evaluateJavaScript("window.__lqSetWishes(" + js(list) + ");0", false); } catch(e) {}
