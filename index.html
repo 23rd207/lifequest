@@ -752,6 +752,17 @@ function collectRemsDoneElsewhere(){
   else say([`リマインダーで完了した ${got.length}件を 受け取った！`,`${xp} の経験値と ${g}G を手に入れた。`]);
 }
 
+// 何日も続く予定:終わる日と「何日目か」。1日で終わる予定は null
+function multiDay(e,onDs){
+  const s0=parseYmd(ymd(new Date(e.start))),last=new Date((e.end||e.start)-1),l0=parseYmd(ymd(last));
+  const total=Math.round((l0-s0)/864e5)+1;
+  if(e.allDay?total<2:ymd(last)===ymd(new Date(e.start)))return null;
+  const md=d=>(d.getMonth()+1)+"/"+d.getDate()+"("+WD[d.getDay()]+")";
+  if(!e.allDay&&total===2&&last.getHours()<12)return {end:"翌"+hm(e.end)+"まで",nth:0,total};
+  const nth=onDs?Math.round((parseYmd(onDs)-s0)/864e5)+1:0;
+  return {end:md(l0)+(e.allDay?"":" "+hm(e.end))+"まで",nth:nth>=1&&nth<=total?nth:0,total};
+}
+function multiTxt(e,onDs){const m=multiDay(e,onDs);return m?`〜${m.end}${m.nth?`(${m.nth}/${m.total}日目)`:""}`:""}
 function hm(ms){const d=new Date(ms);return pad(d.getHours())+":"+pad(d.getMinutes())}
 // 近々の予定:明日から7日先まで(カレンダーの予定と支払い)
 function soonList(days){
@@ -759,7 +770,7 @@ function soonList(days){
   const to=new Date(t.getFullYear(),t.getMonth(),t.getDate()+1+days,DAY_START).getTime();
   const tomorrowDs=ymd(new Date(t.getFullYear(),t.getMonth(),t.getDate()+1));
   const evs=(MONTH||[]).filter(e=>e.allDay?(ymd(new Date(e.start))>=tomorrowDs&&e.start<to):(e.start>=from&&e.start<to))
-    .map(e=>({kind:"ev",ds:ymd(new Date(e.start)),time:e.allDay?"終日":hm(e.start),title:e.title||"予定",shift:isShift(e),sort:e.allDay?parseYmd(ymd(new Date(e.start))).getTime():e.start}));
+    .map(e=>({kind:"ev",ds:ymd(new Date(e.start)),time:e.allDay?"終日":hm(e.start),title:e.title||"予定",until:multiTxt(e),shift:isShift(e),sort:e.allDay?parseYmd(ymd(new Date(e.start))).getTime():e.start}));
   const pays=(PAYS||[]).filter(p=>p.due&&!paidNow.has(p.id)&&ymd(new Date(p.due))>=tomorrowDs&&p.due<to)
     .map(p=>({kind:"pay",ds:ymd(new Date(p.due)),time:"支払",title:p.title+(p.amount?" "+yen(p.amount):""),sort:p.due+1}));
   return evs.concat(pays).sort((a,b)=>a.sort-b.sort);
@@ -772,7 +783,7 @@ function soonSection(){
   let last="",rows="";
   for(const it of items.slice(0,12)){
     if(it.ds!==last){rows+=`<li class="soon-day">${label(it.ds)}</li>`;last=it.ds}
-    rows+=`<li><span class="mono ${it.kind==="pay"?"pay":it.shift?"shift":"t"}">${it.time}</span><span>${esc(it.title)}</span></li>`;
+    rows+=`<li><span class="mono ${it.kind==="pay"?"pay":it.shift?"shift":"t"}">${it.time}</span><span>${esc(it.title)}${it.until?` <small style="color:var(--gold)">${it.until}</small>`:""}</span></li>`;
   }
   return `<section class="win" aria-labelledby="h-soon">
     <h2 class="win-title" id="h-soon"><b>近々の予定</b><span>これから1週間</span></h2>
@@ -820,7 +831,7 @@ function questRow(q,kind,now){
     right=`<button class="btn go" data-do="custom:${q.id}">達成</button>`;
   }
   const when = kind==="daily" ? `<span class="chip">${WINDOWS[q.w].n}</span>`
-    : kind==="event" ? `<span class="chip">${q.allDay?"終日":hm(q.start)+"〜"+hm(q.end)}</span>${q.shift?`<span class="chip rew">シフト</span>`:""}`
+    : kind==="event" ? `<span class="chip">${multiDay(q)?(q.allDay?"終日 ":hm(q.start)+" ")+multiTxt(q,today()):(q.allDay?"終日":hm(q.start)+"〜"+hm(q.end))}</span>${q.shift?`<span class="chip rew">シフト</span>`:""}`
     : kind==="rem" ? `${q.overdue&&!done?`<span class="chip expired-tag">期限切れ</span>`:`<span class="chip">${remDueLabel(q)}</span>`}${q.list?`<span>${esc(q.list)}</span>`:""}`
     : `<span class="chip">${(REPEAT[q.r]||REPEAT.daily).chip}</span>`;
   const del = kind==="custom" ? `<button class="btn ghost small" data-del="${q.id}" aria-label="${esc(q.t)} を削除" style="margin-left:auto">削除</button>`:"";
@@ -1039,7 +1050,7 @@ function calTab(now){
     <h2 class="win-title" id="h-day"><b>${sd.getMonth()+1}月${sd.getDate()}日(${WD[sd.getDay()]})</b><span>${clr?"★ 達成 "+clr+"件":""}</span></h2>
     ${evs.length?`<ul class="evlist">${evs.map(e=>{
         const canEdit=canAdd&&!e.pending&&e.k&&e.editable!==false;
-        const body=`<span class="mono ${isShift(e)?"shift":"t"}">${e.allDay?"終日":hm(e.start)+"〜"}</span><span>${esc(e.title||"予定")}${e.pending?` <small style="color:var(--dim)">(追加中)</small>`:""}${canAdd&&!e.pending&&e.editable===false?` <small style="color:var(--dim)">(このカレンダーは編集できません)</small>`:""}${canEdit?` <small style="color:var(--dim)">✎</small>`:""}</span>`;
+        const body=`<span class="mono ${isShift(e)?"shift":"t"}">${e.allDay?"終日":hm(e.start)+"〜"}</span><span>${esc(e.title||"予定")}${multiDay(e)?` <small style="color:var(--gold)">${multiTxt(e,sel)}</small>`:""}${e.pending?` <small style="color:var(--dim)">(追加中)</small>`:""}${canAdd&&!e.pending&&e.editable===false?` <small style="color:var(--dim)">(このカレンダーは編集できません)</small>`:""}${canEdit?` <small style="color:var(--dim)">✎</small>`:""}</span>`;
         if(ui.editEv&&ui.editEv===e.k)return `<li class="evli">${eventForm(sel,e)}</li>`;
         return canEdit?`<li class="evli"><button class="evbtn" data-evedit="${esc(e.k)}" aria-label="${esc(e.title||"予定")} を編集">${body}</button></li>`:`<li>${body}</li>`;
       }).join("")}</ul>`

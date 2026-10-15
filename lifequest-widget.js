@@ -76,6 +76,15 @@ const MAX_LV = 100;
 
 /* ---- ゲームと同じ計算 ---- */
 const pad = n => String(n).padStart(2, "0");
+// 何日も続く予定の終わり("〜10/20(火)" / "〜翌6:00")。1日で終わるなら ""
+function untilLabel(e){
+  const s0 = new Date(e.start); const last = new Date((e.end || e.start) - 1);
+  const a = new Date(s0.getFullYear(), s0.getMonth(), s0.getDate()), b = new Date(last.getFullYear(), last.getMonth(), last.getDate());
+  const days = Math.round((b - a) / 864e5);
+  if (days < 1) return "";
+  if (!e.allDay && days === 1 && last.getHours() < 12) return "〜翌" + hm(e.end);
+  return "〜" + (b.getMonth()+1) + "/" + b.getDate() + "(" + "日月火水木金土"[b.getDay()] + ")";
+}
 function hm(ms){ const d = new Date(ms); return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
 function ymd(d){ return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
 function gameDate(now){ return new Date(now.getTime() - DAY_START*3600e3); }
@@ -496,6 +505,7 @@ async function buildWidget(){
     const tm = row.addText(e.allDay ? "終日 " : hm(e.start));
     tm.font = Font.mediumMonospacedSystemFont(size - 1); tm.textColor = shift ? C.gold : (nowIn ? C.ink : C.dim); tm.lineLimit = 1;
     text(row, (isDone ? "✔ " : "") + (e.title || "予定"), size, isDone ? C.dim : C.ink, !isDone && nowIn);
+    const ul = untilLabel(e); if (ul) text(row, ul, size - 3, C.gold);
     if (nowIn) text(row, "いま", 11, C.gold, true);
   }
   function eventsBlock(max, size){
@@ -539,6 +549,7 @@ async function buildWidget(){
       const tm = row.addText(dayLabel(e.start) + (e.allDay ? "" : " " + hm(e.start)));
       tm.font = Font.mediumMonospacedSystemFont(12); tm.textColor = (SHIFT_RE.test(e.title || "") || SHIFT_RE.test(e.cal || "")) ? C.gold : C.dim; tm.lineLimit = 1;
       text(row, e.title || "予定", 14, C.ink);
+      const ul = untilLabel(e); if (ul) text(row, ul, 11, C.gold);
     }
   }
   const openQuests = quests.filter(q => !done.has(q.id) && questState(q, now) === "open");
