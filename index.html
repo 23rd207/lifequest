@@ -664,7 +664,9 @@ function questTab(now){
 
   ${EVENTS?eventSection(now):(IN_WIDGET_APP?`<section class="win"><h2 class="win-title"><b>今日の予定クエスト</b></h2><div class="empty">カレンダーを読めませんでした。iPhoneの「設定」→「Scriptable」→「カレンダー」を「フルアクセス」にしてください。</div></section>`:"")}
 
-  ${REMS?remSection(now):(IN_WIDGET_APP?`<section class="win"><h2 class="win-title"><b>リマインダー</b></h2><div class="empty">リマインダーを読めませんでした。iPhoneの「設定」→「Scriptable」→「リマインダー」をオンにしてください。</div></section>`:"")}
+  ${REMS?remSection(now):`<section class="win"><h2 class="win-title"><b>リマインダー</b></h2><div class="empty">${IN_WIDGET_APP
+    ?"リマインダーを読めませんでした。iPhoneの「設定」→「Scriptable」→「リマインダー」をオンにして、もう一度ウィジェットから開いてください。"
+    :"リマインダーの表示と追加は、ホーム画面のウィジェットをタップして開いたゲームで使えます。"}</div></section>`}
 
   <section class="win" aria-labelledby="h-week">
     <h2 class="win-title" id="h-week"><b>ウィークリー</b><span class="mono">${wk} / ${WEEK_GOAL}</span></h2>

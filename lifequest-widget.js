@@ -153,10 +153,11 @@ async function fetchGame(timeout){
   return null;
 }
 async function openGame(){
-  // 保存済みの版ですぐ開く。なければダウンロードを待つ(初回だけ)
-  let html = fm.fileExists(HTML_CACHE) ? fm.readString(HTML_CACHE) : null;
-  const hadCache = !!html;
-  if (!html) html = await fetchGame(10);
+  // まず最新版を取りにいく(最大3秒)。電波が悪いときは保存済みの版で開く
+  const hadCache = fm.fileExists(HTML_CACHE);
+  let html = await fetchGame(hadCache ? 3 : 10);
+  const fresh = !!html;
+  if (!html && hadCache) html = fm.readString(HTML_CACHE);
   if (!html) {
     const a = new Alert(); a.title = "ゲームを開けませんでした";
     a.message = "はじめの1回はインターネットにつながった状態で開いてください。"; a.addAction("OK"); await a.present();
@@ -181,8 +182,8 @@ async function openGame(){
   let open = true;
   wv.loadHTML(html, GAME_URL);
   const shown = wv.present(false).then(() => { open = false; }, () => { open = false; });
-  // 次回のために、裏で最新版を取っておく
-  if (hadCache) fetchGame(10);
+  // 取れなかったときは、次回のために裏で取っておく
+  if (!fresh) fetchGame(10);
   // 1秒ごとに、ゲームのセーブと頼まれた操作を受け取る
   const TAKE = "(function(){var s=window.__lqPending||null;window.__lqPending=null;var o=window.__lqOps||[];window.__lqOps=[];return JSON.stringify({s:s,o:o});})()";
   async function drain(){
