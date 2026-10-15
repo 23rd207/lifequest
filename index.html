@@ -75,9 +75,16 @@ button,input,select{font:inherit;color:inherit}
 }
 .win-title b{color:var(--ink);font-weight:400;font-size:16px;letter-spacing:.04em}
 .mono{font-variant-numeric:tabular-nums}
+.sprite{image-rendering:pixelated;image-rendering:crisp-edges;display:block;flex:none}
+.ranks{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
+.ranks li{background:#070a22;border:2px solid transparent;border-radius:5px;padding:8px 4px 6px;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;min-width:0}
+.ranks li.now{border-color:var(--gold)}
+.ranks .rn{font-family:var(--f-body);font-size:12px;font-weight:700;line-height:1.3;overflow-wrap:anywhere}
+.ranks .rl{font-size:11px;color:var(--dim)}
+.ranks li.lock .rn{color:var(--dim)}
 
 /* hero status */
-.hero{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:end}
+.hero{display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;align-items:end}
 .hero-name{font-size:22px;line-height:1.2;overflow-wrap:anywhere}
 .hero-title{font-size:13px;color:var(--gold)}
 .hero-lv{font-size:13px;color:var(--dim);text-align:right}
@@ -277,7 +284,24 @@ const POOL = [
   {id:"n4",t:"湯船につかる",s:"body",d:1,w:"night"},
   {id:"n5",t:"日付が変わる前にふとんに入る",s:"body",d:3,w:"night"}
 ];
-const TITLES = [[1,"村人"],[3,"見習い冒険者"],[6,"冒険者"],[10,"熟練の旅人"],[15,"勇者"],[20,"伝説の勇者"],[30,"人生の賢者"]];
+const TITLES = [[1, "村人"], [3, "旅立ちの若者"], [6, "見習い冒険者"], [10, "冒険者"], [15, "熟練の旅人"], [20, "騎士"], [30, "勇者"], [40, "英雄"], [50, "伝説の勇者"], [65, "星を継ぐ者"], [80, "人生の賢者"], [100, "人生を極めし者"]];
+// 階級ごとのドット絵(16x16)。1文字 = 1ドット、"." は透明
+const SPRITE_PAL = {"K": "#1a1030", "S": "#ffcf9e", "s": "#e0a070", "H": "#6b3f1f", "h": "#4a2a14", "B": "#5a3a28", "b": "#3e271a", "W": "#e6e9f8", "w": "#9aa0c0", "T": "#8a5a2c", "G": "#ffd45e", "g": "#c99a2e", "A": "#fff6c8", "M": "#bb93ff", "m": "#7d5ad0", "R": "#e04a5a", "r": "#a8303e", "N": "#2a2f6e", "n": "#1b1f4a", "Y": "#ffffff", "O": "#6fbcff", "o": "#3c7fcf", "L": "#7fbf6a", "l": "#4f8a44", "U": "#c9a77a", "u": "#9a7a52", "I": "#b8bfd8", "i": "#7f86a8", "V": "#f3f1ff", "v": "#c8c4e8"};
+const SPRITES = [
+  ["................", ".....KKKKKK.....", "....KHHHHHHK....", "...KHHHHHHHHK...", "...KHSSSSSSHK...", "...KSSKSSKSSK...", "...KSSKSSKSSK...", "...KsSSSSSSsK...", "....KSSssSSK....", ".....KKKKKK.....", "....KLLLLLLK....", "...KSLLLLLLSK...", "...KSKllllKSK...", "....KLLKKLLK....", "....KBBK.KBBK...", "....KKK...KKK..."],
+  ["................", ".....KKKKKK.....", "....KHHHHHHK....", "...KHHHHHHHHK...", "...KHSSSSSSHK...", "...KSSKSSKSSK...", "...KSSKSSKSSKT..", "...KsSSSSSSsKTK.", "....KSSssSSKKTK.", ".....KKKKKK.KTK.", "....KOOOOOOKTK..", "...KSOOOOOOST...", "...KSKooooKST...", "....KOOKKOOKT...", "....KBBK.KBBK...", "....KKK...KKK..."],
+  ["................", ".....KKKKKK.....", "....KHHHHHHK....", "...KHHHHHHHHK...", "...KHSSSSSSHK...", "...KSSKSSKSSK...", "...KSSKSSKSSKUK.", "...KsSSSSSSsKUK.", "....KSSssSSKKUK.", ".....KKKKKK.KUK.", "....KOOOOOOKTTTK", "...KSOOOOOOSKTK.", "...KSKooooKSK...", "....KOOKKOOK....", "....KBBK.KBBK...", "....KKK...KKK..."],
+  ["................", ".....KKKKKK.....", "....KHHHHHHK....", "...KHHHHHHHHK...", "...KRRRRRRRRKK..", "...KSSKSSKSSKWK.", "...KSSKSSKSSKWK.", "...KsSSSSSSsKWK.", "....KSSssSSKKWK.", ".....KKKKKK.KWK.", "....KLLLLLLKGGGK", "...KSLLLLLLSKTK.", "...KSKllllKSK...", "....KLLKKLLK....", "....KBBK.KBBK...", "....KKK...KKK..."],
+  ["................", "....KKKKKKKK....", "...KUUUUUUUUK...", "..KUUHHHHHHUUK..", "..KUHSSSSSSHUK..", "..KUSSKSSKSSKWK.", "..KUSSKSSKSSKWK.", "..KuKsSSSSsKKWK.", "....KSSssSSKKWK.", "...K.KKKKKKKKWK.", "..KuKUUUUUKKGGGK", "..KuSUUUUUuKKTK.", "..KuSKuuuuuKK...", "..KuKUUKKKuK....", "...KKBBK.KBKK...", "....KKK...KKK..."],
+  ["................", "....KKKKKKKK....", "...KIIIIIIIIK...", "...KIIIIIIIIK...", "...KiIIIIIIiKK..", "...KSSKSSKSSKWK.", "...KSSKSSKSSKWK.", "...KsSSSSSSsKWK.", "....KSSssSSKKWK.", ".KK..KKKKKK.KWK.", "KOOKKIGGGGIKGGGK", "KOGOKIIIIIISKTK.", "KOOOKKiiiiKSK...", ".KOKKIIKKIIK....", "....KBBK.KBBK...", "....KKK...KKK..."],
+  ["................", ".....KKKKKK.....", "....KHHKGKHK....", "...KGGGGGGGGK...", "...KHSSSSSSHKK..", "...KSSKSSKSSKWK.", "...KSSKSSKSSKWK.", "...KsSSSSSSsKWK.", "....KSSssSSKKWK.", ".KKK.KKKKKKKKWK.", "KRRKKOOOOOKKGGGK", "KRGRKOOOOORKKTK.", "KRRRKKoooorKK...", ".KRKKOOKKKrK....", "...KKBBK.KBKK...", "....KKK...KKK..."],
+  ["................", ".....KKKKKK.....", "....KHHKGKHK....", "...KGGGGGGGGK...", "...KHSSSSSSHKK..", "...KSSKSSKSSKWK.", "...KSSKSSKSSKWK.", "...KsSSSSSSsKWK.", "....KSSssSSKKWK.", ".KKK.KKKKKKKKWK.", "KGGKKGGGGGGKGGGK", "KGRGKIIIIIRKKTK.", "KGGGKKiiiirKK...", ".KGKKGGKKGGK....", "...KKBBK.KBKK...", "....KKK...KKK..."],
+  ["....K.K..K.K....", "A...KGKGGKGK...A", "....KGGGGGGK....", "...KGGRGGRGGA...", "A..KHSSSSSSHKWK.", "...KSSKSSKSAKWK.", "...KSSKSSKSSKWK.", "...KsSSSSSSsKWKA", "....KSSssSSKKWK.", ".KKK.KKKKKKKKWK.", "KGGKKGGGGGKKGGGK", "KGRGKGGGGGRKKGK.", "AGGGKKggggrKK...", ".KGKKGGKKKrK....", "...KKBBK.KBKK..A", "....KKK...KKK..."],
+  ["....K.K..K.K....", "A...KIKIIKIK.G.A", "....KIIOIIIKGGG.", "...KHHHHHHHGGAGG", "A..KHSSSSSSHGGG.", "...KSSKSSKSGKT.G", "...KSSKSSKSSKT..", "...KsSSSSSSsKT.A", "....KSSssSSKKTK.", "...K.KKKKKKKKTK.", "..KNKNNNNNKKTK..", "..KYSNNNNNYKT...", "A.KnSKnnnnnKT...", "..KnKYNKKKnKT...", "...KKBBK.KBKT..A", "....KKK...KKK..."],
+  [".......KK.......", ".....KKMMKK.KAK.", "....KKMMMMKKAMAK", "...KKMMMMMMKKAK.", "..KmmmmmmmmmmT..", "...KSSKSSKSSKT..", "...KSSKSSKSSKT..", "...KsSSSSSSsKT..", "....KYYYYYYKKTK.", "....KYYYYYYKKTK.", "....KKYYYYKKTK..", "...KSMMMMMMST...", "...KSKmmmmKST...", "...KMMMMMMMMT...", "...KmmmmmmmmT...", "...KKKKKKKKKK..."],
+  ["A..AKAKAAKAK..A.", "....KGKGGKGK.G.K", "....KGGGGGGKGGG.", "...KGGRGGRGGGAGA", "...KHSSSSSSHGGG.", "...KSSKSSKSGKT.G", "A..KSSKSSKSSKT..", "...KsSSSSSSsKT..", "....KYYYYYYKKTK.", "....KYYYYYYKKTKA", "....KKYYYYKKTK..", "A..KSVVVVVVST...", "...KSKvvvvKST...", "...KVVVVVVVVT...", "...KvvGvvGvvT...", ".A.KKAKKKKAKK.A."]
+];
+const MAX_LV = 100;
 const WEEK_GOAL = 20;
 const ALL_CLEAR = {xp:50, g:30};
 const WEEK_BONUS = {xp:150, g:80};
@@ -436,7 +460,26 @@ function rollover(now=new Date()){
 
 /* ---------- level ---------- */
 const need = l => 40 + l*20;
-function levelInfo(xp){let l=1,x=xp;while(x>=need(l)){x-=need(l);l++}return{lv:l,cur:x,need:need(l)}}
+function levelInfo(xp){let l=1,x=xp;while(l<MAX_LV&&x>=need(l)){x-=need(l);l++}
+  if(l>=MAX_LV)return{lv:MAX_LV,cur:need(MAX_LV),need:need(MAX_LV),max:true};
+  return{lv:l,cur:x,need:need(l)}}
+function rankIndex(lv){let i=0;TITLES.forEach(([l],k)=>{if(lv>=l)i=k});return i}
+// ドット絵を画像にして使い回す(locked = まだなっていない階級のシルエット)
+const spriteCache={};
+function spriteURL(i,locked){
+  const key=i+(locked?"L":"");
+  if(spriteCache[key])return spriteCache[key];
+  try{
+    const c=document.createElement("canvas");c.width=c.height=16;const g=c.getContext("2d");
+    SPRITES[i].forEach((row,y)=>[...row].forEach((ch,x)=>{
+      if(ch===".")return;g.fillStyle=locked?"#2a3070":SPRITE_PAL[ch];g.fillRect(x,y,1,1)}));
+    return spriteCache[key]=c.toDataURL();
+  }catch(e){return""}
+}
+function spriteImg(i,size,locked,label){
+  const u=spriteURL(i,locked);
+  return u?`<img class="sprite" src="${u}" width="${size}" height="${size}" alt="${esc(label||TITLES[i][1])}">`:"";
+}
 function titleFor(lv){let t=TITLES[0][1];for(const [l,n] of TITLES)if(lv>=l)t=n;return t}
 const statLv = p => Math.floor(p/20)+1;
 
@@ -477,7 +520,11 @@ function say(lines){
 msgEl.addEventListener("click",()=>{msgEl.hidden=true});
 const ov=document.getElementById("overlay");
 function showLevelUp(lv){
-  ov.innerHTML='<div class="win lvl-anim" role="dialog" aria-label="レベルアップ"><div style="color:var(--dim);font-size:13px">'+esc(state.name)+' は</div><div class="big">レベル '+lv+' に<br>あがった！</div><div style="font-size:14px;margin:10px 0 16px">称号「'+esc(titleFor(lv))+'」</div><button class="btn go" id="ov-ok">つづける</button></div>';
+  const ri=rankIndex(lv),newRank=ri>(state.rankSeen||0);
+  if(newRank){state.rankSeen=ri;save()}
+  ov.innerHTML='<div class="win lvl-anim" role="dialog" aria-label="レベルアップ"><div style="display:flex;justify-content:center;margin-bottom:6px">'+spriteImg(ri,96)+'</div><div style="color:var(--dim);font-size:13px">'+esc(state.name)+' は</div><div class="big">レベル '+lv+' に<br>あがった！</div>'
+    +(newRank?'<div style="font-size:15px;margin:10px 0 16px;color:var(--gold)">階級が「'+esc(titleFor(lv))+'」に あがった！</div>':'<div style="font-size:14px;margin:10px 0 16px">階級「'+esc(titleFor(lv))+'」</div>')
+    +'<button class="btn go" id="ov-ok">つづける</button></div>';
   ov.hidden=false;document.getElementById("ov-ok").focus();
 }
 ov.addEventListener("click",e=>{if(e.target.id==="ov-ok"||e.target===ov){if(!state.name)return;ov.hidden=true}});
@@ -505,11 +552,12 @@ function heroHTML(now){
   const pct=Math.round(L.cur/L.need*100);
   return `<section class="win" aria-label="ステータス">
     <div class="hero">
-      <div><div class="hero-title">${esc(titleFor(L.lv))}</div><div class="hero-name">${esc(state.name||"ゆうしゃ")}</div></div>
+      ${spriteImg(rankIndex(L.lv),56)}
+      <div style="min-width:0"><div class="hero-title">${esc(titleFor(L.lv))}</div><div class="hero-name">${esc(state.name||"ゆうしゃ")}</div></div>
       <div class="hero-lv">Lv <span class="mono">${L.lv}</span></div>
     </div>
     <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--dim);margin:8px 0 3px"><span>EXP</span><span class="mono">${L.cur} / ${L.need}</span></div>
-    <div class="bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="次のレベルまで"><i style="width:${pct}%"></i></div>
+    ${L.max?`<div class="hero-title" style="text-align:right;margin-bottom:3px">レベル上限に到達！</div>`:""}<div class="bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="次のレベルまで"><i style="width:${pct}%"></i></div>
     <div class="meta">
       <span>ゴールド <strong class="g mono">${state.gold}G</strong></span>
       <span>連続 <strong class="mono">${state.streak}日</strong></span>
@@ -710,9 +758,14 @@ function statusTab(){
       <div>総経験値<b class="mono">${state.xp}</b></div>
       <div>達成したクエスト<b class="mono">${state.totalDone}</b></div>
       <div>連続日数<b class="mono">${state.streak}日</b></div>
-      <div>次の称号<b style="font-size:15px">${esc((TITLES.find(([l])=>l>L.lv)||[0,"—"])[1])}</b></div>
+      <div>次の階級<b style="font-size:15px">${esc((TITLES.find(([l])=>l>L.lv)||[0,"—"])[1])}</b></div>
     </div>
     <p class="note" style="margin:8px 0 0">1日にクエストを3つ以上達成すると、連続日数がのびます。</p>
+  </section>
+  <section class="win" aria-labelledby="h-rank">
+    <h2 class="win-title" id="h-rank"><b>階級の道</b><span class="mono">Lv上限 ${MAX_LV}</span></h2>
+    <ul class="ranks">${TITLES.map(([lv,n],i)=>{const got=L.lv>=lv,now=rankIndex(L.lv)===i;
+      return `<li class="${now?"now":""} ${got?"":"lock"}">${spriteImg(i,48,!got,got?n:"まだ見ぬ階級")}<span class="rn">${got?esc(n):"？？？"}</span><span class="rl mono">Lv${lv}〜</span></li>`}).join("")}</ul>
   </section>
   <section class="win" aria-labelledby="h-log">
     <h2 class="win-title" id="h-log"><b>冒険の書</b><span>最近のできごと</span></h2>

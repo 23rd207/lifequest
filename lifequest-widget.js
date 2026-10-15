@@ -41,7 +41,24 @@ const POOL = [
   {id:"n4",t:"湯船につかる",s:"body",d:1,w:"night"},
   {id:"n5",t:"日付が変わる前にふとんに入る",s:"body",d:3,w:"night"}
 ];
-const TITLES = [[1,"村人"],[3,"見習い冒険者"],[6,"冒険者"],[10,"熟練の旅人"],[15,"勇者"],[20,"伝説の勇者"],[30,"人生の賢者"]];
+const TITLES = [[1, "村人"], [3, "旅立ちの若者"], [6, "見習い冒険者"], [10, "冒険者"], [15, "熟練の旅人"], [20, "騎士"], [30, "勇者"], [40, "英雄"], [50, "伝説の勇者"], [65, "星を継ぐ者"], [80, "人生の賢者"], [100, "人生を極めし者"]];
+// 階級ごとのドット絵(16x16)。1文字 = 1ドット、"." は透明
+const SPRITE_PAL = {"K": "#1a1030", "S": "#ffcf9e", "s": "#e0a070", "H": "#6b3f1f", "h": "#4a2a14", "B": "#5a3a28", "b": "#3e271a", "W": "#e6e9f8", "w": "#9aa0c0", "T": "#8a5a2c", "G": "#ffd45e", "g": "#c99a2e", "A": "#fff6c8", "M": "#bb93ff", "m": "#7d5ad0", "R": "#e04a5a", "r": "#a8303e", "N": "#2a2f6e", "n": "#1b1f4a", "Y": "#ffffff", "O": "#6fbcff", "o": "#3c7fcf", "L": "#7fbf6a", "l": "#4f8a44", "U": "#c9a77a", "u": "#9a7a52", "I": "#b8bfd8", "i": "#7f86a8", "V": "#f3f1ff", "v": "#c8c4e8"};
+const SPRITES = [
+  ["................", ".....KKKKKK.....", "....KHHHHHHK....", "...KHHHHHHHHK...", "...KHSSSSSSHK...", "...KSSKSSKSSK...", "...KSSKSSKSSK...", "...KsSSSSSSsK...", "....KSSssSSK....", ".....KKKKKK.....", "....KLLLLLLK....", "...KSLLLLLLSK...", "...KSKllllKSK...", "....KLLKKLLK....", "....KBBK.KBBK...", "....KKK...KKK..."],
+  ["................", ".....KKKKKK.....", "....KHHHHHHK....", "...KHHHHHHHHK...", "...KHSSSSSSHK...", "...KSSKSSKSSK...", "...KSSKSSKSSKT..", "...KsSSSSSSsKTK.", "....KSSssSSKKTK.", ".....KKKKKK.KTK.", "....KOOOOOOKTK..", "...KSOOOOOOST...", "...KSKooooKST...", "....KOOKKOOKT...", "....KBBK.KBBK...", "....KKK...KKK..."],
+  ["................", ".....KKKKKK.....", "....KHHHHHHK....", "...KHHHHHHHHK...", "...KHSSSSSSHK...", "...KSSKSSKSSK...", "...KSSKSSKSSKUK.", "...KsSSSSSSsKUK.", "....KSSssSSKKUK.", ".....KKKKKK.KUK.", "....KOOOOOOKTTTK", "...KSOOOOOOSKTK.", "...KSKooooKSK...", "....KOOKKOOK....", "....KBBK.KBBK...", "....KKK...KKK..."],
+  ["................", ".....KKKKKK.....", "....KHHHHHHK....", "...KHHHHHHHHK...", "...KRRRRRRRRKK..", "...KSSKSSKSSKWK.", "...KSSKSSKSSKWK.", "...KsSSSSSSsKWK.", "....KSSssSSKKWK.", ".....KKKKKK.KWK.", "....KLLLLLLKGGGK", "...KSLLLLLLSKTK.", "...KSKllllKSK...", "....KLLKKLLK....", "....KBBK.KBBK...", "....KKK...KKK..."],
+  ["................", "....KKKKKKKK....", "...KUUUUUUUUK...", "..KUUHHHHHHUUK..", "..KUHSSSSSSHUK..", "..KUSSKSSKSSKWK.", "..KUSSKSSKSSKWK.", "..KuKsSSSSsKKWK.", "....KSSssSSKKWK.", "...K.KKKKKKKKWK.", "..KuKUUUUUKKGGGK", "..KuSUUUUUuKKTK.", "..KuSKuuuuuKK...", "..KuKUUKKKuK....", "...KKBBK.KBKK...", "....KKK...KKK..."],
+  ["................", "....KKKKKKKK....", "...KIIIIIIIIK...", "...KIIIIIIIIK...", "...KiIIIIIIiKK..", "...KSSKSSKSSKWK.", "...KSSKSSKSSKWK.", "...KsSSSSSSsKWK.", "....KSSssSSKKWK.", ".KK..KKKKKK.KWK.", "KOOKKIGGGGIKGGGK", "KOGOKIIIIIISKTK.", "KOOOKKiiiiKSK...", ".KOKKIIKKIIK....", "....KBBK.KBBK...", "....KKK...KKK..."],
+  ["................", ".....KKKKKK.....", "....KHHKGKHK....", "...KGGGGGGGGK...", "...KHSSSSSSHKK..", "...KSSKSSKSSKWK.", "...KSSKSSKSSKWK.", "...KsSSSSSSsKWK.", "....KSSssSSKKWK.", ".KKK.KKKKKKKKWK.", "KRRKKOOOOOKKGGGK", "KRGRKOOOOORKKTK.", "KRRRKKoooorKK...", ".KRKKOOKKKrK....", "...KKBBK.KBKK...", "....KKK...KKK..."],
+  ["................", ".....KKKKKK.....", "....KHHKGKHK....", "...KGGGGGGGGK...", "...KHSSSSSSHKK..", "...KSSKSSKSSKWK.", "...KSSKSSKSSKWK.", "...KsSSSSSSsKWK.", "....KSSssSSKKWK.", ".KKK.KKKKKKKKWK.", "KGGKKGGGGGGKGGGK", "KGRGKIIIIIRKKTK.", "KGGGKKiiiirKK...", ".KGKKGGKKGGK....", "...KKBBK.KBKK...", "....KKK...KKK..."],
+  ["....K.K..K.K....", "A...KGKGGKGK...A", "....KGGGGGGK....", "...KGGRGGRGGA...", "A..KHSSSSSSHKWK.", "...KSSKSSKSAKWK.", "...KSSKSSKSSKWK.", "...KsSSSSSSsKWKA", "....KSSssSSKKWK.", ".KKK.KKKKKKKKWK.", "KGGKKGGGGGKKGGGK", "KGRGKGGGGGRKKGK.", "AGGGKKggggrKK...", ".KGKKGGKKKrK....", "...KKBBK.KBKK..A", "....KKK...KKK..."],
+  ["....K.K..K.K....", "A...KIKIIKIK.G.A", "....KIIOIIIKGGG.", "...KHHHHHHHGGAGG", "A..KHSSSSSSHGGG.", "...KSSKSSKSGKT.G", "...KSSKSSKSSKT..", "...KsSSSSSSsKT.A", "....KSSssSSKKTK.", "...K.KKKKKKKKTK.", "..KNKNNNNNKKTK..", "..KYSNNNNNYKT...", "A.KnSKnnnnnKT...", "..KnKYNKKKnKT...", "...KKBBK.KBKT..A", "....KKK...KKK..."],
+  [".......KK.......", ".....KKMMKK.KAK.", "....KKMMMMKKAMAK", "...KKMMMMMMKKAK.", "..KmmmmmmmmmmT..", "...KSSKSSKSSKT..", "...KSSKSSKSSKT..", "...KsSSSSSSsKT..", "....KYYYYYYKKTK.", "....KYYYYYYKKTK.", "....KKYYYYKKTK..", "...KSMMMMMMST...", "...KSKmmmmKST...", "...KMMMMMMMMT...", "...KmmmmmmmmT...", "...KKKKKKKKKK..."],
+  ["A..AKAKAAKAK..A.", "....KGKGGKGK.G.K", "....KGGGGGGKGGG.", "...KGGRGGRGGGAGA", "...KHSSSSSSHGGG.", "...KSSKSSKSGKT.G", "A..KSSKSSKSSKT..", "...KsSSSSSSsKT..", "....KYYYYYYKKTK.", "....KYYYYYYKKTKA", "....KKYYYYKKTK..", "A..KSVVVVVVST...", "...KSKvvvvKST...", "...KVVVVVVVVT...", "...KvvGvvGvvT...", ".A.KKAKKKKAKK.A."]
+];
+const MAX_LV = 100;
 
 /* ---- ゲームと同じ計算 ---- */
 const pad = n => String(n).padStart(2, "0");
@@ -61,7 +78,19 @@ function dailyFor(date){
   return [...pick(by("morning"),1,r), ...pick(by("any"),3,r), ...pick(by("night"),1,r)].map(q => q.id);
 }
 const need = l => 40 + l*20;
-function levelInfo(xp){ let l=1,x=xp; while(x>=need(l)){ x-=need(l); l++; } return {lv:l,cur:x,need:need(l)}; }
+function levelInfo(xp){ let l=1,x=xp; while(l<MAX_LV&&x>=need(l)){ x-=need(l); l++; }
+  return l>=MAX_LV ? {lv:MAX_LV,cur:1,need:1} : {lv:l,cur:x,need:need(l)}; }
+function rankIndex(lv){ let i=0; TITLES.forEach(([l],k) => { if (lv>=l) i=k; }); return i; }
+// ドット絵を画像にする(1ドット = scale ピクセル)
+function spriteImage(i, scale){
+  const ctx = new DrawContext();
+  ctx.size = new Size(16*scale, 16*scale); ctx.opaque = false; ctx.respectScreenScale = true;
+  SPRITES[i].forEach((row, y) => [...row].forEach((ch, x) => {
+    if (ch === ".") return;
+    ctx.setFillColor(new Color(SPRITE_PAL[ch])); ctx.fillRect(new Rect(x*scale, y*scale, scale, scale));
+  }));
+  return ctx.getImage();
+}
 function titleFor(lv){ let t=TITLES[0][1]; for (const [l,n] of TITLES) if (lv>=l) t=n; return t; }
 function periodKey(r, ds){
   if (r === "weekly"){ const [y,m,d]=ds.split("-").map(Number); const dt=new Date(y,m-1,d); dt.setDate(dt.getDate()-(dt.getDay()+6)%7); return ymd(dt); }
@@ -289,8 +318,11 @@ async function buildWidget(){
     el.font = Font.systemFont(size); el.textColor = C.gold; el.lineLimit = 1;
   }
   function statusBlock(stack){
-    text(stack, titleFor(L.lv), 12, C.gold);
-    text(stack, st && st.name ? st.name : "ゆうしゃ", 17, C.ink, true);
+    const top = stack.addStack(); top.centerAlignContent(); top.spacing = 6;
+    const im = top.addImage(spriteImage(rankIndex(L.lv), 3)); im.imageSize = new Size(44, 44);
+    const nm = top.addStack(); nm.layoutVertically();
+    text(nm, titleFor(L.lv), 11, C.gold);
+    text(nm, st && st.name ? st.name : "ゆうしゃ", 16, C.ink, true);
     const row = stack.addStack(); row.centerAlignContent();
     text(row, "Lv ", 10, C.dim); text(row, String(L.lv), 22, C.ink, true);
     bar(stack, L.cur/L.need, 8);
@@ -330,8 +362,9 @@ async function buildWidget(){
   }
   function footer(){
     const row = w.addStack(); row.centerAlignContent(); row.spacing = 6;
+    const im = row.addImage(spriteImage(rankIndex(L.lv), 2)); im.imageSize = new Size(24, 24);
     text(row, "Lv" + L.lv, 15, C.ink, true);
-    bar(row, L.cur/L.need, 8);
+    if (family !== "small") bar(row, L.cur/L.need, 8);
     row.addSpacer();
     text(row, "デイリー " + nDone + "/" + quests.length, 13, nDone === quests.length ? C.gold : C.dim);
   }
@@ -400,12 +433,12 @@ async function buildWidget(){
     }
     w.addSpacer();
     const main = w.addStack(); main.spacing = 12;
-    const left = main.addStack(); left.layoutVertically(); left.size = new Size(125, 0);
+    const left = main.addStack(); left.layoutVertically(); left.size = new Size(135, 0);
     statusBlock(left);
     const right = main.addStack(); right.layoutVertically(); right.spacing = 4;
     text(right, "デイリーミッション " + nDone + "/" + quests.length, 12, C.dim);
     for (const q of quests) questLine(right, q);
-    used += 6;
+    used += 7;
     let room = 15 - used - 1; // 最後の1行はウィークリー
     if (remsLeft.length && room >= 2) {
       w.addSpacer();
