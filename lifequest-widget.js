@@ -164,10 +164,15 @@ async function openGame(){
   }
   const saved = loadSave();
   const [events, month, rems] = [await todayEvents(), await monthEvents(), await loadReminders()];
+  let remCals = [];
+  try {
+    const def = await Calendar.defaultForReminders();
+    remCals = [def].concat((await Calendar.forReminders()).filter(c => c.identifier !== def.identifier));
+  } catch(e) {}
   const js = v => JSON.stringify(v).replace(/</g, "\\u003c");
   const boot = "<script>window.__LQ_HOST__='scriptable';window.__LQ_STATE__=" + js(saved)
     + ";window.__LQ_EVENTS__=" + js(events) + ";window.__LQ_MONTH__=" + js(month)
-    + ";window.__LQ_REMS__=" + js(rems) + ";</script>";
+    + ";window.__LQ_REMS__=" + js(rems) + ";window.__LQ_REMLISTS__=" + js(remCals.map(c => c.title)) + ";</script>";
   html = html.replace("<head>", "<head>" + boot)
     // フォントの読み込みを待たずに表示する
     .replace(/<link rel="stylesheet" href="(https:\/\/fonts\.googleapis\.com[^"]+)">/, '<link rel="stylesheet" href="$1" media="print" onload="this.media=\'all\'">');
@@ -184,12 +189,21 @@ async function openGame(){
     let r = null;
     try { r = JSON.parse(await wv.evaluateJavaScript(TAKE, false)); } catch(e) { return; }
     if (r.s) writeSave(r.s);
-    let added = false;
+    let added = false, remAdded = false;
     for (const op of r.o || []) {
       try {
         if (op.type === "rem") {
           const rem = remMap.get(op.id);
           if (rem) { rem.isCompleted = !!op.done; rem.save(); }
+        } else if (op.type === "addRem") {
+          const r = new Reminder();
+          r.title = String(op.title || "リマインダー");
+          if (op.due) { r.dueDate = new Date(op.due); r.dueDateIncludesTime = !!op.hasTime; }
+          r.priority = op.high ? 1 : 0;
+          const cal = remCals.find(c => c.title === op.list) || remCals[0];
+          if (cal) r.calendar = cal;
+          r.save();
+          remAdded = true;
         } else if (op.type === "addEvent") {
           const ev = new CalendarEvent();
           ev.title = String(op.title || "予定");
@@ -201,6 +215,9 @@ async function openGame(){
           added = true;
         }
       } catch(e) {}
+    }
+    if (remAdded) {
+      try { const list = await loadReminders(); await wv.evaluateJavaScript("window.__lqSetRems(" + js(list) + ");0", false); } catch(e) {}
     }
     if (added) {
       try {
@@ -224,18 +241,19 @@ async function buildWidget(){
   const done = new Set(st && st.daily && st.daily.date === t ? Object.keys(st.daily.done || {}) : []);
   const quests = ids.map(id => POOL.find(p => p.id === id)).filter(Boolean);
   const nDone = quests.filter(q => done.has(q.id)).length;
-  const evs = (await todayEvents()) || [];
+  const evsRaw = await todayEvents();
+  const evs = evsRaw || [];
   const evDone = st && st.events && st.events.date === t ? st.events.done || {} : {};
   const evId = e => "e" + hash(String(e.id) + "|" + e.start).toString(36);
   const nextEv = evs.filter(e => !evDone[evId(e)] && (e.allDay || e.end > now.getTime()))
     .sort((a,b) => (a.allDay ? 0 : a.start) - (b.allDay ? 0 : b.start));
   const family = config.widgetFamily || "medium";
-  let remsLeft = [];
-  if (family === "large" || family === "extraLarge") {
-    const rs = (await loadReminders()) || [];
-    const rDone = st && st.rems && st.rems.date === t ? st.rems.done || {} : {};
-    remsLeft = rs.filter(r => !r.completed && !rDone["r" + hash(String(r.id)).toString(36)]);
-  }
+  const rs = (await loadReminders()) || [];
+  const rDone = st && st.rems && st.rems.date === t ? st.rems.done || {} : {};
+  const remsLeft = rs.filter(r => !r.completed && !rDone["r" + hash(String(r.id)).toString(36)]);
+  // 今日のこのあとの予定(終わったものは出さない)
+  const upcoming = evs.filter(e => e.allDay || e.end > now.getTime())
+    .sort((a,b) => (a.allDay ? 0 : 1) - (b.allDay ? 0 : 1) || a.start - b.start);
   const streakAlive = st && st.streak && (st.streakDay === t || st.streakDay === ymd(new Date(gameDate(now).getTime() - 864e5)));
   const streak = streakAlive ? st.streak : 0;
   const week = st && st.week && st.week.key === weekKey(now) ? st.week.n : 0;
@@ -278,55 +296,74 @@ async function buildWidget(){
     text(row, q.t, 12, s === "open" ? C.ink : C.dim, s === "open");
   }
 
+  function eventLine(stack, e, size){
+    const row = stack.addStack(); row.centerAlignContent(); row.spacing = 6;
+    const shift = SHIFT_RE.test(e.title || "") || SHIFT_RE.test(e.cal || "");
+    const isDone = !!evDone[evId(e)];
+    const nowIn = !e.allDay && e.start <= now.getTime() && e.end > now.getTime();
+    const tm = row.addText(e.allDay ? "終日 " : hm(e.start));
+    tm.font = Font.mediumMonospacedSystemFont(size - 1); tm.textColor = shift ? C.gold : (nowIn ? C.ink : C.dim); tm.lineLimit = 1;
+    text(row, (isDone ? "✔ " : "") + (e.title || "予定"), size, isDone ? C.dim : C.ink, !isDone && nowIn);
+    if (nowIn) text(row, "いま", 9, C.gold, true);
+  }
+  function eventsBlock(max, size){
+    const head = w.addStack(); head.centerAlignContent();
+    text(head, "今日の予定", 11, C.gold, true);
+    head.addSpacer();
+    const d = new Date(now);
+    text(head, (d.getMonth()+1) + "/" + d.getDate() + "(" + "日月火水木金土"[d.getDay()] + ")", 10, C.dim);
+    w.addSpacer(4);
+    if (!upcoming.length) text(w, evsRaw ? "このあとの予定はありません" : "タップしてカレンダーを許可してください", size - 1, C.dim);
+    for (const e of upcoming.slice(0, max)) { eventLine(w, e, size); w.addSpacer(2); }
+    if (upcoming.length > max) text(w, "ほか " + (upcoming.length - max) + "件", 9, C.dim);
+  }
+  function footer(){
+    const row = w.addStack(); row.centerAlignContent(); row.spacing = 6;
+    text(row, "Lv" + L.lv, 12, C.ink, true);
+    bar(row, L.cur/L.need, 7);
+    row.addSpacer();
+    text(row, "デイリー " + nDone + "/" + quests.length, 10, nDone === quests.length ? C.gold : C.dim);
+  }
+  function footer2(){
+    const row = w.addStack(); row.centerAlignContent(); row.spacing = 4;
+    text(row, (st ? st.gold || 0 : 0) + "G ・ 連続" + streak + "日" + (remsLeft.length ? " ・ リマインダー" + remsLeft.length : ""), 10, C.dim);
+    row.addSpacer();
+    const d = row.addDate(nextReset(now)); d.applyTimerStyle(); d.font = Font.mediumMonospacedSystemFont(10); d.textColor = C.dim; d.rightAlignText();
+  }
+
   if (family === "small") {
-    statusBlock(w);
+    eventsBlock(2, 12);
     w.addSpacer();
-    text(w, "デイリー "+nDone+"/"+quests.length, 11, nDone === quests.length ? C.gold : C.ink, true);
+    footer();
+  } else if (family === "medium") {
+    eventsBlock(3, 13);
+    w.addSpacer();
+    footer();
+    w.addSpacer(2);
+    footer2();
   } else {
+    eventsBlock(4, 13);
+    w.addSpacer(10);
     const main = w.addStack(); main.spacing = 12;
     const left = main.addStack(); left.layoutVertically(); left.size = new Size(110, 0);
     statusBlock(left);
     const right = main.addStack(); right.layoutVertically(); right.spacing = 4;
-    text(right, "デイリーミッション "+nDone+"/"+quests.length, 10, C.dim);
+    text(right, "デイリーミッション " + nDone + "/" + quests.length, 10, C.dim);
     for (const q of quests) questLine(right, q);
-    if (family === "large" || family === "extraLarge") {
-      w.addSpacer(10);
-      text(w, "ウィークリー "+Math.min(week, WEEK_GOAL)+"/"+WEEK_GOAL, 10, C.dim);
-      bar(w, week/WEEK_GOAL, 9);
-      if (nextEv.length) {
-        w.addSpacer(8);
-        text(w, "今日の予定クエスト", 10, C.dim);
-        for (const e of nextEv.slice(0, 3)) {
-          const row = w.addStack(); row.spacing = 5;
-          const shift = SHIFT_RE.test(e.title || "") || SHIFT_RE.test(e.cal || "");
-          text(row, e.allDay ? "終日" : hm(e.start), 11, shift ? C.gold : C.dim, true);
-          text(row, e.title || "予定", 12, C.ink);
-        }
-      }
-      if (remsLeft.length) {
-        w.addSpacer(8);
-        text(w, "リマインダー のこり" + remsLeft.length + "件", 10, C.dim);
-        for (const r of remsLeft.slice(0, 3)) {
-          const row = w.addStack(); row.spacing = 5;
-          text(row, r.overdue ? "!" : "▶", 11, r.overdue ? C.danger : C.ink, true);
-          text(row, r.title || "リマインダー", 12, C.ink);
-        }
-      }
-      if (customs.length) {
-        w.addSpacer(8);
-        text(w, "マイクエスト", 10, C.dim);
-        for (const c of customs.slice(0, 5)) {
-          const row = w.addStack(); row.spacing = 5;
-          text(row, c.done ? "✔" : "▶", 11, c.done ? C.gold : C.ink, true);
-          text(row, c.t, 12, c.done ? C.dim : C.ink);
-        }
+    if (remsLeft.length) {
+      w.addSpacer(8);
+      text(w, "リマインダー のこり" + remsLeft.length + "件", 10, C.dim);
+      for (const r of remsLeft.slice(0, 3)) {
+        const row = w.addStack(); row.spacing = 5;
+        text(row, r.overdue ? "!" : "▶", 11, r.overdue ? C.danger : C.ink, true);
+        text(row, r.title || "リマインダー", 12, C.ink);
       }
     }
+    w.addSpacer(6);
+    const wk = w.addStack(); wk.centerAlignContent(); wk.spacing = 6;
+    text(wk, "ウィークリー " + Math.min(week, WEEK_GOAL) + "/" + WEEK_GOAL, 10, C.dim);
+    bar(wk, week/WEEK_GOAL, 8);
     w.addSpacer();
-    if (family === "medium" && nextEv.length) {
-      const e = nextEv[0];
-      text(w, "次の予定 " + (e.allDay ? "終日" : hm(e.start)) + " " + (e.title || ""), 10, C.dim);
-    }
   }
   if (!st) text(w, "タップして冒険をはじめる", 9, C.dim);
   return w;
