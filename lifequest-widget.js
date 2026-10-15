@@ -618,7 +618,10 @@ async function buildWidget(){
     statusBlock(left);
     const right = main.addStack(); right.layoutVertically(); right.spacing = 4;
     text(right, "デイリーミッション " + nDone + "/" + quests.length, 12, C.dim);
-    for (const q of quests) questLine(right, q);
+    // 達成済み・期限切れは出さず、のこりのミッションだけ並べる
+    const left5 = quests.filter(q => !done.has(q.id) && questState(q, now) !== "expired");
+    if (!left5.length) text(right, nDone === quests.length ? "★ 全部クリア！" : "今日のミッションは おしまい", 14, nDone === quests.length ? C.gold : C.dim, true);
+    for (const q of left5) questLine(right, q);
     used += 7;
     let room = 15 - used - 1; // 最後の1行はウィークリー
     if (remsLeft.length && room >= 2) {
