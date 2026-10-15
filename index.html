@@ -286,7 +286,21 @@ const POOL = [
 ];
 const TITLES = [[1, "村人"], [3, "旅立ちの若者"], [6, "見習い冒険者"], [10, "冒険者"], [15, "熟練の旅人"], [20, "騎士"], [30, "勇者"], [40, "英雄"], [50, "伝説の勇者"], [65, "星を継ぐ者"], [80, "人生の賢者"], [100, "人生を極めし者"]];
 // 階級ごとのドット絵(16x16)。1文字 = 1ドット、"." は透明
-const SPRITE_PAL = {"K": "#1a1030", "S": "#ffcf9e", "s": "#e0a070", "H": "#6b3f1f", "h": "#4a2a14", "B": "#5a3a28", "b": "#3e271a", "W": "#e6e9f8", "w": "#9aa0c0", "T": "#8a5a2c", "G": "#ffd45e", "g": "#c99a2e", "A": "#fff6c8", "M": "#bb93ff", "m": "#7d5ad0", "R": "#e04a5a", "r": "#a8303e", "N": "#2a2f6e", "n": "#1b1f4a", "Y": "#ffffff", "O": "#6fbcff", "o": "#3c7fcf", "L": "#7fbf6a", "l": "#4f8a44", "U": "#c9a77a", "u": "#9a7a52", "I": "#b8bfd8", "i": "#7f86a8", "V": "#f3f1ff", "v": "#c8c4e8"};
+const SPRITE_PAL = {"K": "#1a1030", "S": "#ffcf9e", "s": "#e0a070", "H": "#6b3f1f", "h": "#4a2a14", "B": "#5a3a28", "b": "#3e271a", "W": "#e6e9f8", "w": "#9aa0c0", "T": "#8a5a2c", "G": "#ffd45e", "g": "#c99a2e", "A": "#fff6c8", "M": "#bb93ff", "m": "#7d5ad0", "R": "#e04a5a", "r": "#a8303e", "N": "#2a2f6e", "n": "#1b1f4a", "Y": "#ffffff", "O": "#6fbcff", "o": "#3c7fcf", "L": "#7fbf6a", "l": "#4f8a44", "U": "#c9a77a", "u": "#9a7a52", "I": "#b8bfd8", "i": "#7f86a8", "V": "#f3f1ff", "v": "#c8c4e8", "D": "#2b2b3a", "d": "#15151f", "Z": "#ff9ec4", "z": "#e070a0", "F": "#ffffff", "f": "#d6d6e6", "Q": "#5ad1c8", "q": "#2f9a92", "X": "#7a1d2a", "x": "#4a0f18", "J": "#ff8a3c", "j": "#c45f1c"};
+// きせかえ(ショップでGで買える)。[id, 名前, 値段, ドット絵]
+const COSTUMES = [
+  ["pajama", "パジャマ", 100, [".........KK.....", ".....KKKKZZK....", "....KKKZZZZKZ...", "...KKZZZZZZKK...", "...KzzzzzzzzK...", "...KSSKSSKSSK...", "...KSSKSSKSSK...", "...KsSSSSSSsK...", "....KSSssSSK....", ".....KKKKKK.....", "....KZZZZZZK....", "KKKKSZZZZZZSK...", "KFFFKKzzzzKSK...", "KFFFKZZKKZZK....", "KKKKKBBK.KBBK...", "....KKK...KKK..."]],
+  ["student", "学生服", 150, ["................", ".....KKKKKK.....", "....KHHHHHHK....", "...KHHHHHHHHK...", "...KHSSSSSSHK...", "...KSSKSSKSSK...", "...KSSKSSKSSK...", "...KsSSSSSSsK...", "....KSSssSSK....", ".....KKKKKK.....", "....KDGDDGDK....", ".KKKKDDGDDDSK...", "KKOOKddddKSKK...", "KKooKDDKKDDK....", ".KKKKBBK.KBBK...", "....KKK...KKK..."]],
+  ["chef", "コック", 200, ["....KKKKKKKK....", "...KFFFFFFFFK...", "...KFFFFFFFFK...", "...KfFFFFFFfK...", "...KKKKKKKKKK...", "...KSSKSSKSKKK..", "...KSSKSSKSKWK..", "...KsSSSSSSsKW..", "....KSSssSSKKWK.", ".....KKKKKK.KwK.", "....KKFFFFKKwK..", "...KSKFFFFKSw...", "...KSKFFFFKSK...", "....KFFKKFFK....", "....KBBK.KBBK...", "....KKK...KKK..."]],
+  ["cat", "ねこみみ", 250, ["..KK........KK..", "..KZKKKKKKKKZK..", "..KHHHKKKKHHHK..", "...KHHHHHHHHK...", "...KHSSSSSSHK...", "...KSSKSSKSSK...", "...KSSKSSKSSK...", "...KsSSSSSSsK...", "....KSSssSSK....", ".....KKKKKK.....", "....KHHHHHHK....", "...KSHHHHHHSKKHK", "...KSKhhhhKSKKHK", "....KHHKKHHKKHK.", "....KBBK.KBBKK..", "....KKK...KKK..."]],
+  ["ninja", "忍者", 400, ["................", ".....KKKKKK.....", "...KDDDDDDDDK...", "...KDDDDDDDDK...", "...KRRRRRRRRKRR.", "...KSSKSSKSSK...", "...KSSKSSKSSK...", "...KDDDDDDDDKK..", "....KDDDDDDKKWK.", ".....KKKKKK.KWK.", "....KDDDDDDKDDDK", "...KSDDDDDDSKDK.", "...KSKddddKSK...", "....KDDKKDDK....", "....KBBK.KBBK...", "....KKK...KKK..."]],
+  ["pirate", "海賊", 500, ["...KKKKKKKKKK...", "..KDDDDYDDDDDK..", ".KDDDDDDDDDDDDK.", "...KRRRRRRRRK...", "...KHSSSSSSHK...", "...KSSKSKKKSK...", "...KSSKSKKKSK...", "...KsSSSSSSsK...", "....KSSssSSK....", ".....KKKKKK.KWK.", "....KRRRRRRKWK..", "...KSRRRRRRSKWK.", "...KSKrrrrKSKKK.", "....KRRKKRRK....", "....KBBK.KBBK...", "....KKK...KKK..."]],
+  ["idol", "アイドル", 600, ["................", "....KKKKKKKK....", "...KZZZZZZZZK...", "..KZZZZZZZZZZK..", "..KZZSSSSSSZZK..", "...KSSKSSKSSK...", "...KSSKSSKSSK...", "..KZsSSSSSSsKDK.", "..KZKSSssSSKKDK.", "...KKKKKKKKKKK..", "....KZZZZZZKKTK.", "...KSZZZZZZSKTK.", "...KSKzzzzKSK...", "...KZZZZZZZZK...", "....KBBK.KBBK...", "....KKK...KKK..."]],
+  ["santa", "サンタ", 800, ["..........KKF...", ".....KKKKKRRKF..", "....KRRRRRRRK...", "...KFFFFFFFFK...", "...KHSSSSSSHK...", "...KSSKSSKSSK...", "...KSSKSSKSSK...", "...KsSSSSSSsK...", "....KFFFFFFK....", ".KKKKFFFFFFK....", "KJJJKRRRRRRK....", "KJJJJKRRRRRSK...", "KJJJJKrrrrKSK...", ".KKKKRRKKRRK....", "....KBBK.KBBK...", "....KKK...KKK..."]],
+  ["astro", "宇宙飛行士", 1200, ["....KKKKKKKK....", "...KFFFFFFFFK...", "..KFKKKKKKKKFK..", "..KFKQQQQQQKFK..", "..KFKQSSSSQKFK..", "..KFKSSKSKSKFK..", "..KFKSSKSKSKFK..", "..KFKQSSSSQKFK..", "..KFFKKKKKKFFK..", "...KKKKKKKKKK...", "....KFFOOFFK....", "...KFFFFFFFFK...", "...KFKffffKFK...", "....KFFKKFFK....", "....KFFK.KFFK...", "....KKK...KKK..."]],
+  ["dragon", "ドラゴン着ぐるみ", 1500, ["...K.K....K.K...", "..KLKLKKKKLKLK..", "..KLLLLLLLLLLK..", ".KLLLLLLLLLLLLK.", ".KLlSSSSSSSSlLK.", ".KLSSKSSSSKSSLK.", ".KLSSKSSSSKSSLK.", ".KLlsSSSSSSslLK.", "..KLLLLLLLLLLK..", ".....KKKKKK.....", "....KLLLLLLK....", "...KSLLLLLLSKLLK", "...KSKllllKSKKLK", "....KLLKKLLK..KK", "....KBBK.KBBK...", "....KKK...KKK..."]],
+  ["maou", "魔王", 3000, ["..KK........KK..", "A.KXKKKKKKKKXK.A", "...KXHHHHHHXK...", "...KHHHHHHHHKXK.", "A..KHSSSSSSHKXK.", "...KSSKSSKSSKXK.", "...KSSRSSRSSKXK.", "...KsSSSSSSsKXKA", "....KSSssSSKKXK.", "...K.KKKKKKKKXK.", "..KDKXXXXXKKDDDK", "..KDSXXXXXDKKDK.", "A.KdSKxxxxdKK...", "..KdKXXKKKdK....", "...KKBBK.KBKK..A", "....KKK...KKK..."]]
+];
 const SPRITES = [
   ["................", ".....KKKKKK.....", "....KHHHHHHK....", "...KHHHHHHHHK...", "...KHSSSSSSHK...", "...KSSKSSKSSK...", "...KSSKSSKSSK...", "...KsSSSSSSsK...", "....KSSssSSK....", ".....KKKKKK.....", "....KLLLLLLK....", "...KSLLLLLLSK...", "...KSKllllKSK...", "....KLLKKLLK....", "....KBBK.KBBK...", "....KKK...KKK..."],
   ["................", ".....KKKKKK.....", "....KHHHHHHK....", "...KHHHHHHHHK...", "...KHSSSSSSHK...", "...KSSKSSKSSK...", "...KSSKSSKSSKT..", "...KsSSSSSSsKTK.", "....KSSssSSKKTK.", ".....KKKKKK.KTK.", "....KOOOOOOKTK..", "...KSOOOOOOST...", "...KSKooooKST...", "....KOOKKOOKT...", "....KBBK.KBBK...", "....KKK...KKK..."],
@@ -359,6 +373,7 @@ function fresh(){
     events:{date:"",done:{}},
     rems:{date:"",done:{}},
     hist:{},
+    wardrobe:{owned:{},wear:""},
     week:{key:"",n:0,bonus:false},
     custom:[
       {id:"c1",t:"(例)メールの返信をすませる",s:"int",d:1,r:"daily",doneOn:"",got:null},
@@ -381,6 +396,7 @@ function normalize(s){
   o.events=Object.assign(fresh().events,s.events||{});
   o.rems=Object.assign(fresh().rems,s.rems||{});
   if(!o.hist||typeof o.hist!=="object")o.hist={};
+  o.wardrobe=Object.assign({owned:{},wear:""},s.wardrobe||{});if(!o.wardrobe.owned||typeof o.wardrobe.owned!=="object")o.wardrobe.owned={};
   o.week=Object.assign(fresh().week,s.week||{});
   o.dayCount=Object.assign(fresh().dayCount,s.dayCount||{});
   if(!Array.isArray(o.custom))o.custom=[];
@@ -466,19 +482,35 @@ function levelInfo(xp){let l=1,x=xp;while(l<MAX_LV&&x>=need(l)){x-=need(l);l++}
 function rankIndex(lv){let i=0;TITLES.forEach(([l],k)=>{if(lv>=l)i=k});return i}
 // ドット絵を画像にして使い回す(locked = まだなっていない階級のシルエット)
 const spriteCache={};
+// 見た目のキー:"r3" = 階級3の姿、"c:ninja" = きせかえ
+function spriteRows(key){
+  if(key[0]==="c"){const c=COSTUMES.find(x=>x[0]===key.slice(2));return c?c[3]:SPRITES[0]}
+  return SPRITES[Number(key.slice(1))]||SPRITES[0];
+}
 function spriteURL(i,locked){
-  const key=i+(locked?"L":"");
+  const key=(typeof i==="number"?"r"+i:i)+(locked?"#L":"");
   if(spriteCache[key])return spriteCache[key];
   try{
     const c=document.createElement("canvas");c.width=c.height=16;const g=c.getContext("2d");
-    SPRITES[i].forEach((row,y)=>[...row].forEach((ch,x)=>{
+    spriteRows(key.replace("#L","")).forEach((row,y)=>[...row].forEach((ch,x)=>{
       if(ch===".")return;g.fillStyle=locked?"#2a3070":SPRITE_PAL[ch];g.fillRect(x,y,1,1)}));
     return spriteCache[key]=c.toDataURL();
   }catch(e){return""}
 }
+// いま着ている見た目
+function lookKey(){
+  const w=state.wardrobe.wear||"",ri=rankIndex(levelInfo(state.xp).lv);
+  if(w.startsWith("c:")&&state.wardrobe.owned[w.slice(2)])return w;
+  if(/^r\d+$/.test(w)&&Number(w.slice(1))<=ri)return w;
+  return "r"+ri;
+}
+function lookName(key){
+  if(key.startsWith("c:")){const c=COSTUMES.find(x=>x[0]===key.slice(2));return c?c[1]:""}
+  return TITLES[Number(key.slice(1))][1];
+}
 function spriteImg(i,size,locked,label){
   const u=spriteURL(i,locked);
-  return u?`<img class="sprite" src="${u}" width="${size}" height="${size}" alt="${esc(label||TITLES[i][1])}">`:"";
+  return u?`<img class="sprite" src="${u}" width="${size}" height="${size}" alt="${esc(label||(typeof i==="number"?TITLES[i][1]:lookName(i)))}">`:"";
 }
 function titleFor(lv){let t=TITLES[0][1];for(const [l,n] of TITLES)if(lv>=l)t=n;return t}
 const statLv = p => Math.floor(p/20)+1;
@@ -544,7 +576,7 @@ function askName(){
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 let tab="quest";
 try{tab=sessionStorage.getItem("lq.tab")||"quest"}catch(e){}
-let ui={priceEdit:"",addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
+let ui={buyConfirm:"",priceEdit:"",addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
 const app=document.getElementById("app");
 
 function heroHTML(now){
@@ -552,7 +584,7 @@ function heroHTML(now){
   const pct=Math.round(L.cur/L.need*100);
   return `<section class="win" aria-label="ステータス">
     <div class="hero">
-      ${spriteImg(rankIndex(L.lv),56)}
+      ${spriteImg(lookKey(),56)}
       <div style="min-width:0"><div class="hero-title">${esc(titleFor(L.lv))}</div><div class="hero-name">${esc(state.name||"ゆうしゃ")}</div></div>
       <div class="hero-lv">Lv <span class="mono">${L.lv}</span></div>
     </div>
@@ -740,12 +772,6 @@ function questTab(now){
     <div class="q-t" style="margin-bottom:6px">今週クエストを${WEEK_GOAL}回 達成する</div>
     <div class="progress-line"><div class="bar"><i style="width:${wk/WEEK_GOAL*100}%"></i></div></div>
     <div class="bonus ${state.week.bonus?"got":""}">${state.week.bonus?"★ 今週の報酬を受け取った！":"報酬 +"+WEEK_BONUS.xp+"EXP "+WEEK_BONUS.g+"G ・ 月曜4時リセット"}</div>
-  </section>
-
-  <section class="win" aria-labelledby="h-my">
-    <h2 class="win-title" id="h-my"><b>マイクエスト</b><span>自分の目標</span></h2>
-    ${customs.length?`<ul class="qlist">${customs.map(q=>questRow(q,"custom",now)).join("")}</ul>`:`<div class="empty">まだクエストがありません。下のボタンから、あなたの人生の目標を登録しよう。</div>`}
-    ${ui.addQuest?questForm():`<div style="margin-top:8px"><button class="btn" id="open-add">＋ クエストを追加</button></div>`}
   </section>`;
 }
 function questForm(){
@@ -846,27 +872,50 @@ function rewardForm(toList){
       <div class="row"><button class="btn ghost" type="button" id="cancel-reward">やめる</button><button class="btn go" type="submit">登録する</button></div>
     </form>`;
 }
+function wardrobeSection(){
+  const ri=rankIndex(levelInfo(state.xp).lv),wear=lookKey(),auto=!state.wardrobe.wear||state.wardrobe.wear===""||wear==="r"+ri&&state.wardrobe.wear!=="r"+ri;
+  const card=(key,name,sub,btn,now)=>`<li class="${now?"now":""}">${spriteImg(key,56,false,name)}<span class="rn">${esc(name)}</span>${sub?`<span class="rl">${sub}</span>`:""}${btn}</li>`;
+  const ranks=TITLES.slice(0,ri+1).map(([lv,n],i)=>{
+    const key="r"+i,isNow=state.wardrobe.wear===key;
+    return card(key,n,"階級の姿",isNow?`<span class="rl" style="color:var(--gold)">着ている</span>`:`<button class="btn small" data-wear="${key}">着る</button>`,isNow);
+  });
+  const shop=COSTUMES.map(([id,n,price])=>{
+    const key="c:"+id,own=!!state.wardrobe.owned[id],isNow=wear===key;
+    let btn;
+    if(isNow)btn=`<span class="rl" style="color:var(--gold)">着ている</span>`;
+    else if(own)btn=`<button class="btn small" data-wear="${key}">着る</button>`;
+    else if(ui.buyConfirm===id)btn=`<button class="btn small go" data-buycos="${id}">${price}Gで買う</button>`;
+    else btn=`<button class="btn small ${state.gold>=price?"":"ghost"}" data-askcos="${id}" ${state.gold>=price?"":"disabled"}>${price}G</button>`;
+    return card(key,n,own?"持っている":(state.gold>=price?"買える！":"あと"+(price-state.gold)+"G"),btn,isNow);
+  });
+  return `<section class="win" aria-labelledby="h-wd">
+    <h2 class="win-title" id="h-wd"><b>きせかえ屋</b><span>所持金 <span class="rew mono">${state.gold}G</span></span></h2>
+    <div style="display:flex;gap:12px;margin-bottom:10px;align-items:center"><div style="flex:none">${spriteImg(wear,64)}</div><div style="flex:1 1 auto;min-width:0"><div class="rl" style="font-size:12px;color:var(--dim)">いまの姿</div><div style="font-size:17px">${esc(lookName(wear))}</div>
+      ${state.wardrobe.wear?`<button class="btn ghost small" data-wear="" style="margin-top:6px">階級の姿にもどす(自動)</button>`:`<div class="note" style="margin-top:4px">階級が上がると、姿も自動で変わります。</div>`}</div></div>
+    <ul class="ranks">${shop.join("")}</ul>
+    <h3 class="win-title" style="margin-top:14px"><b style="font-size:15px">階級の姿</b><span>いつでも着られる</span></h3>
+    <ul class="ranks">${ranks.join("")}</ul>
+  </section>`;
+}
 function shopTab(){
   const linked=IN_WIDGET_APP&&WISHES!==null;
   const wishes=wishQuests();
-  const head=`<h2 class="win-title" id="h-shop"><b>ごほうびショップ</b><span>所持金 <span class="rew mono">${state.gold}G</span></span></h2>`;
-  const local=state.rewards.length?`<ul class="qlist">${state.rewards.map(r=>shopItem(r,"local")).join("")}</ul>`:"";
+  let wishSec;
   if(linked){
-    return `<section class="win" aria-labelledby="h-shop">${head}
+    wishSec=`<section class="win" aria-labelledby="h-shop">
+      <h2 class="win-title" id="h-shop"><b>ほしいもの・したいこと</b><span>所持金 <span class="rew mono">${state.gold}G</span></span></h2>
       <p class="note" style="margin:0 0 6px">リマインダーの「${esc(WISH_LIST)}」と連動中。買うとリマインダーでも完了になります。値段はリマインダーのメモ欄に「300G」のように書いても変えられます。</p>
       ${wishes.length?`<ul class="qlist">${wishes.map(r=>shopItem(r,"wish")).join("")}</ul>`:`<div class="empty">リストに未完了の項目がありません。</div>`}
       ${ui.addReward?rewardForm(true):`<div style="margin-top:8px"><button class="btn" id="open-reward">＋ ほしいもの・したいことを追加</button></div>`}
-    </section>
-    ${local?`<section class="win" aria-labelledby="h-local"><h2 class="win-title" id="h-local"><b>ゲーム内のごほうび</b></h2>${local}</section>`:""}`;
+    </section>`;
+  }else{
+    wishSec=`<section class="win" aria-labelledby="h-shop"><h2 class="win-title" id="h-shop"><b>ほしいもの・したいこと</b></h2>
+      ${IN_WIDGET_APP?`<p class="note" style="margin:0">リマインダーに「ほしいもの・したいこと」リストがありません。作ると、ためたGで現実のごほうびを買えるようになります。</p>
+        <div class="row" style="margin-top:8px"><button class="btn" id="make-wishlist" ${wishListCreating?"disabled":""}>${wishListCreating?"作成中…":"リストを作って連動する"}</button></div>`
+        :`<p class="note" style="margin:0">ウィジェットから開くと、リマインダーの「ほしいもの・したいこと」リストをGで買えます。</p>`}
+    </section>`;
   }
-  return `<section class="win" aria-labelledby="h-shop">${head}
-    <p class="note" style="margin:0 0 6px">ためたゴールドで、現実の自分にごほうびを。品物は自由に登録できます。</p>
-    ${local||`<div class="empty">品物がありません。追加してみよう。</div>`}
-    ${ui.addReward?rewardForm(false):`<div style="margin-top:8px"><button class="btn" id="open-reward">＋ ごほうびを追加</button></div>`}
-    ${IN_WIDGET_APP?`<div class="form"><p class="note" style="margin:0">リマインダーに「ほしいもの・したいこと」リストがありません。作るとショップと連動します。</p>
-      <div class="row"><button class="btn" id="make-wishlist" ${wishListCreating?"disabled":""}>${wishListCreating?"作成中…":"リストを作って連動する"}</button></div></div>`
-      :`<p class="note" style="margin:8px 0 0">ウィジェットから開くと、リマインダーの「ほしいもの・したいこと」リストと連動できます。</p>`}
-  </section>`;
+  return wardrobeSection()+wishSec;
 }
 
 /* ---------- こよみ(カレンダー) ---------- */
@@ -995,6 +1044,13 @@ app.addEventListener("click",e=>{
     if(kind==="wish"){boughtWishes.add(id);pushOp({type:"buyWish",id})}
     save();render();
     say([`「${r.t}」を 手に入れた！`,"いまこそ 現実で使うとき。"]);return}
+  if(b.dataset.askcos!==undefined){ui.buyConfirm=b.dataset.askcos;render();return}
+  if(b.dataset.buycos){const c=COSTUMES.find(x=>x[0]===b.dataset.buycos);if(!c||state.gold<c[2]||state.wardrobe.owned[c[0]])return;
+    state.gold-=c[2];state.wardrobe.owned[c[0]]=true;state.wardrobe.wear="c:"+c[0];ui.buyConfirm="";
+    state.log.unshift({t:"きせかえ購入:"+c[1],xp:0,g:-c[2],ts:Date.now()});state.log=state.log.slice(0,40);save();render();
+    say([`「${c[1]}」を 手に入れた！`,"さっそく 着てみた。"]);return}
+  if(b.dataset.wear!==undefined){state.wardrobe.wear=b.dataset.wear;ui.buyConfirm="";save();render();
+    say([b.dataset.wear?`「${lookName(b.dataset.wear)}」に 着がえた！`:"階級の姿に もどした。"]);return}
   if(b.dataset.price){ui.priceEdit=b.dataset.price;render();const el=document.getElementById("price-"+b.dataset.price);if(el){el.focus();el.select()}return}
   switch(b.id){
     case"make-wishlist":wishListCreating=true;pushOp({type:"makeWishList"});render();break;

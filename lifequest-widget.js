@@ -43,7 +43,21 @@ const POOL = [
 ];
 const TITLES = [[1, "村人"], [3, "旅立ちの若者"], [6, "見習い冒険者"], [10, "冒険者"], [15, "熟練の旅人"], [20, "騎士"], [30, "勇者"], [40, "英雄"], [50, "伝説の勇者"], [65, "星を継ぐ者"], [80, "人生の賢者"], [100, "人生を極めし者"]];
 // 階級ごとのドット絵(16x16)。1文字 = 1ドット、"." は透明
-const SPRITE_PAL = {"K": "#1a1030", "S": "#ffcf9e", "s": "#e0a070", "H": "#6b3f1f", "h": "#4a2a14", "B": "#5a3a28", "b": "#3e271a", "W": "#e6e9f8", "w": "#9aa0c0", "T": "#8a5a2c", "G": "#ffd45e", "g": "#c99a2e", "A": "#fff6c8", "M": "#bb93ff", "m": "#7d5ad0", "R": "#e04a5a", "r": "#a8303e", "N": "#2a2f6e", "n": "#1b1f4a", "Y": "#ffffff", "O": "#6fbcff", "o": "#3c7fcf", "L": "#7fbf6a", "l": "#4f8a44", "U": "#c9a77a", "u": "#9a7a52", "I": "#b8bfd8", "i": "#7f86a8", "V": "#f3f1ff", "v": "#c8c4e8"};
+const SPRITE_PAL = {"K": "#1a1030", "S": "#ffcf9e", "s": "#e0a070", "H": "#6b3f1f", "h": "#4a2a14", "B": "#5a3a28", "b": "#3e271a", "W": "#e6e9f8", "w": "#9aa0c0", "T": "#8a5a2c", "G": "#ffd45e", "g": "#c99a2e", "A": "#fff6c8", "M": "#bb93ff", "m": "#7d5ad0", "R": "#e04a5a", "r": "#a8303e", "N": "#2a2f6e", "n": "#1b1f4a", "Y": "#ffffff", "O": "#6fbcff", "o": "#3c7fcf", "L": "#7fbf6a", "l": "#4f8a44", "U": "#c9a77a", "u": "#9a7a52", "I": "#b8bfd8", "i": "#7f86a8", "V": "#f3f1ff", "v": "#c8c4e8", "D": "#2b2b3a", "d": "#15151f", "Z": "#ff9ec4", "z": "#e070a0", "F": "#ffffff", "f": "#d6d6e6", "Q": "#5ad1c8", "q": "#2f9a92", "X": "#7a1d2a", "x": "#4a0f18", "J": "#ff8a3c", "j": "#c45f1c"};
+// きせかえ(ショップでGで買える)。[id, 名前, 値段, ドット絵]
+const COSTUMES = [
+  ["pajama", "パジャマ", 100, [".........KK.....", ".....KKKKZZK....", "....KKKZZZZKZ...", "...KKZZZZZZKK...", "...KzzzzzzzzK...", "...KSSKSSKSSK...", "...KSSKSSKSSK...", "...KsSSSSSSsK...", "....KSSssSSK....", ".....KKKKKK.....", "....KZZZZZZK....", "KKKKSZZZZZZSK...", "KFFFKKzzzzKSK...", "KFFFKZZKKZZK....", "KKKKKBBK.KBBK...", "....KKK...KKK..."]],
+  ["student", "学生服", 150, ["................", ".....KKKKKK.....", "....KHHHHHHK....", "...KHHHHHHHHK...", "...KHSSSSSSHK...", "...KSSKSSKSSK...", "...KSSKSSKSSK...", "...KsSSSSSSsK...", "....KSSssSSK....", ".....KKKKKK.....", "....KDGDDGDK....", ".KKKKDDGDDDSK...", "KKOOKddddKSKK...", "KKooKDDKKDDK....", ".KKKKBBK.KBBK...", "....KKK...KKK..."]],
+  ["chef", "コック", 200, ["....KKKKKKKK....", "...KFFFFFFFFK...", "...KFFFFFFFFK...", "...KfFFFFFFfK...", "...KKKKKKKKKK...", "...KSSKSSKSKKK..", "...KSSKSSKSKWK..", "...KsSSSSSSsKW..", "....KSSssSSKKWK.", ".....KKKKKK.KwK.", "....KKFFFFKKwK..", "...KSKFFFFKSw...", "...KSKFFFFKSK...", "....KFFKKFFK....", "....KBBK.KBBK...", "....KKK...KKK..."]],
+  ["cat", "ねこみみ", 250, ["..KK........KK..", "..KZKKKKKKKKZK..", "..KHHHKKKKHHHK..", "...KHHHHHHHHK...", "...KHSSSSSSHK...", "...KSSKSSKSSK...", "...KSSKSSKSSK...", "...KsSSSSSSsK...", "....KSSssSSK....", ".....KKKKKK.....", "....KHHHHHHK....", "...KSHHHHHHSKKHK", "...KSKhhhhKSKKHK", "....KHHKKHHKKHK.", "....KBBK.KBBKK..", "....KKK...KKK..."]],
+  ["ninja", "忍者", 400, ["................", ".....KKKKKK.....", "...KDDDDDDDDK...", "...KDDDDDDDDK...", "...KRRRRRRRRKRR.", "...KSSKSSKSSK...", "...KSSKSSKSSK...", "...KDDDDDDDDKK..", "....KDDDDDDKKWK.", ".....KKKKKK.KWK.", "....KDDDDDDKDDDK", "...KSDDDDDDSKDK.", "...KSKddddKSK...", "....KDDKKDDK....", "....KBBK.KBBK...", "....KKK...KKK..."]],
+  ["pirate", "海賊", 500, ["...KKKKKKKKKK...", "..KDDDDYDDDDDK..", ".KDDDDDDDDDDDDK.", "...KRRRRRRRRK...", "...KHSSSSSSHK...", "...KSSKSKKKSK...", "...KSSKSKKKSK...", "...KsSSSSSSsK...", "....KSSssSSK....", ".....KKKKKK.KWK.", "....KRRRRRRKWK..", "...KSRRRRRRSKWK.", "...KSKrrrrKSKKK.", "....KRRKKRRK....", "....KBBK.KBBK...", "....KKK...KKK..."]],
+  ["idol", "アイドル", 600, ["................", "....KKKKKKKK....", "...KZZZZZZZZK...", "..KZZZZZZZZZZK..", "..KZZSSSSSSZZK..", "...KSSKSSKSSK...", "...KSSKSSKSSK...", "..KZsSSSSSSsKDK.", "..KZKSSssSSKKDK.", "...KKKKKKKKKKK..", "....KZZZZZZKKTK.", "...KSZZZZZZSKTK.", "...KSKzzzzKSK...", "...KZZZZZZZZK...", "....KBBK.KBBK...", "....KKK...KKK..."]],
+  ["santa", "サンタ", 800, ["..........KKF...", ".....KKKKKRRKF..", "....KRRRRRRRK...", "...KFFFFFFFFK...", "...KHSSSSSSHK...", "...KSSKSSKSSK...", "...KSSKSSKSSK...", "...KsSSSSSSsK...", "....KFFFFFFK....", ".KKKKFFFFFFK....", "KJJJKRRRRRRK....", "KJJJJKRRRRRSK...", "KJJJJKrrrrKSK...", ".KKKKRRKKRRK....", "....KBBK.KBBK...", "....KKK...KKK..."]],
+  ["astro", "宇宙飛行士", 1200, ["....KKKKKKKK....", "...KFFFFFFFFK...", "..KFKKKKKKKKFK..", "..KFKQQQQQQKFK..", "..KFKQSSSSQKFK..", "..KFKSSKSKSKFK..", "..KFKSSKSKSKFK..", "..KFKQSSSSQKFK..", "..KFFKKKKKKFFK..", "...KKKKKKKKKK...", "....KFFOOFFK....", "...KFFFFFFFFK...", "...KFKffffKFK...", "....KFFKKFFK....", "....KFFK.KFFK...", "....KKK...KKK..."]],
+  ["dragon", "ドラゴン着ぐるみ", 1500, ["...K.K....K.K...", "..KLKLKKKKLKLK..", "..KLLLLLLLLLLK..", ".KLLLLLLLLLLLLK.", ".KLlSSSSSSSSlLK.", ".KLSSKSSSSKSSLK.", ".KLSSKSSSSKSSLK.", ".KLlsSSSSSSslLK.", "..KLLLLLLLLLLK..", ".....KKKKKK.....", "....KLLLLLLK....", "...KSLLLLLLSKLLK", "...KSKllllKSKKLK", "....KLLKKLLK..KK", "....KBBK.KBBK...", "....KKK...KKK..."]],
+  ["maou", "魔王", 3000, ["..KK........KK..", "A.KXKKKKKKKKXK.A", "...KXHHHHHHXK...", "...KHHHHHHHHKXK.", "A..KHSSSSSSHKXK.", "...KSSKSSKSSKXK.", "...KSSRSSRSSKXK.", "...KsSSSSSSsKXKA", "....KSSssSSKKXK.", "...K.KKKKKKKKXK.", "..KDKXXXXXKKDDDK", "..KDSXXXXXDKKDK.", "A.KdSKxxxxdKK...", "..KdKXXKKKdK....", "...KKBBK.KBKK..A", "....KKK...KKK..."]]
+];
 const SPRITES = [
   ["................", ".....KKKKKK.....", "....KHHHHHHK....", "...KHHHHHHHHK...", "...KHSSSSSSHK...", "...KSSKSSKSSK...", "...KSSKSSKSSK...", "...KsSSSSSSsK...", "....KSSssSSK....", ".....KKKKKK.....", "....KLLLLLLK....", "...KSLLLLLLSK...", "...KSKllllKSK...", "....KLLKKLLK....", "....KBBK.KBBK...", "....KKK...KKK..."],
   ["................", ".....KKKKKK.....", "....KHHHHHHK....", "...KHHHHHHHHK...", "...KHSSSSSSHK...", "...KSSKSSKSSK...", "...KSSKSSKSSKT..", "...KsSSSSSSsKTK.", "....KSSssSSKKTK.", ".....KKKKKK.KTK.", "....KOOOOOOKTK..", "...KSOOOOOOST...", "...KSKooooKST...", "....KOOKKOOKT...", "....KBBK.KBBK...", "....KKK...KKK..."],
@@ -82,10 +96,22 @@ function levelInfo(xp){ let l=1,x=xp; while(l<MAX_LV&&x>=need(l)){ x-=need(l); l
   return l>=MAX_LV ? {lv:MAX_LV,cur:1,need:1} : {lv:l,cur:x,need:need(l)}; }
 function rankIndex(lv){ let i=0; TITLES.forEach(([l],k) => { if (lv>=l) i=k; }); return i; }
 // ドット絵を画像にする(1ドット = scale ピクセル)
+function spriteRows(key){
+  if (typeof key === "number") return SPRITES[key];
+  if (key.startsWith("c:")) { const c = COSTUMES.find(x => x[0] === key.slice(2)); return c ? c[3] : SPRITES[0]; }
+  return SPRITES[Number(key.slice(1))] || SPRITES[0];
+}
+// ゲームで着ている見た目(きせかえ・昔の階級の姿・いまの階級)
+function lookKey(st, lv){
+  const ri = rankIndex(lv), wd = st && st.wardrobe ? st.wardrobe : {}, w = wd.wear || "";
+  if (w.startsWith("c:") && wd.owned && wd.owned[w.slice(2)]) return w;
+  if (/^r\d+$/.test(w) && Number(w.slice(1)) <= ri) return w;
+  return "r" + ri;
+}
 function spriteImage(i, scale){
   const ctx = new DrawContext();
   ctx.size = new Size(16*scale, 16*scale); ctx.opaque = false; ctx.respectScreenScale = true;
-  SPRITES[i].forEach((row, y) => [...row].forEach((ch, x) => {
+  spriteRows(i).forEach((row, y) => [...row].forEach((ch, x) => {
     if (ch === ".") return;
     ctx.setFillColor(new Color(SPRITE_PAL[ch])); ctx.fillRect(new Rect(x*scale, y*scale, scale, scale));
   }));
@@ -377,7 +403,7 @@ async function buildWidget(){
   }
   function statusBlock(stack){
     const top = stack.addStack(); top.centerAlignContent(); top.spacing = 6;
-    const im = top.addImage(spriteImage(rankIndex(L.lv), 3)); im.imageSize = new Size(44, 44);
+    const im = top.addImage(spriteImage(lookKey(st, L.lv), 3)); im.imageSize = new Size(44, 44);
     const nm = top.addStack(); nm.layoutVertically();
     text(nm, titleFor(L.lv), 11, C.gold);
     text(nm, st && st.name ? st.name : "ゆうしゃ", 16, C.ink, true);
@@ -420,7 +446,7 @@ async function buildWidget(){
   }
   function footer(){
     const row = w.addStack(); row.centerAlignContent(); row.spacing = 6;
-    const im = row.addImage(spriteImage(rankIndex(L.lv), 2)); im.imageSize = new Size(24, 24);
+    const im = row.addImage(spriteImage(lookKey(st, L.lv), 2)); im.imageSize = new Size(24, 24);
     text(row, "Lv" + L.lv, 15, C.ink, true);
     if (family !== "small") bar(row, L.cur/L.need, 8);
     row.addSpacer();
@@ -505,12 +531,15 @@ async function buildWidget(){
       for (const r of remsLeft.slice(0, n)) itemLine(r.overdue ? "!" : "▶", r.overdue ? C.danger : C.gold, r.title || "リマインダー", C.ink);
       room -= n + 1;
     }
-    if (customsLeft.length && room >= 2) {
+    // 次に買えそうなきせかえ(目標として表示)
+    const owned = st && st.wardrobe && st.wardrobe.owned ? st.wardrobe.owned : {};
+    const goal = COSTUMES.filter(c => !owned[c[0]]).sort((a,b) => a[2] - b[2])[0];
+    if (goal && room >= 1) {
       w.addSpacer();
-      const n = Math.min(customsLeft.length, room - 1, 3);
-      sectionTitle("マイクエスト");
-      for (const c of customsLeft.slice(0, n)) itemLine("▶", C.ink, c.t, C.ink);
-      room -= n + 1;
+      const gr = w.addStack(); gr.centerAlignContent(); gr.spacing = 6;
+      const gi = gr.addImage(spriteImage("c:" + goal[0], 2)); gi.imageSize = new Size(26, 26);
+      const gold = st ? st.gold || 0 : 0;
+      text(gr, gold >= goal[2] ? "きせかえ「" + goal[1] + "」が買える！" : "きせかえ「" + goal[1] + "」まで あと" + (goal[2] - gold) + "G", 13, gold >= goal[2] ? C.gold : C.dim);
     }
     w.addSpacer();
     const wk = w.addStack(); wk.centerAlignContent(); wk.spacing = 8;
