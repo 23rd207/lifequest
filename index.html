@@ -194,7 +194,10 @@ button,input,select{font:inherit;color:inherit}
 .evlist{list-style:none;margin:0;padding:0}
 .evlist li{display:grid;grid-template-columns:5.5em 1fr;gap:8px;padding:7px 2px;border-bottom:1px dotted #ffffff1c;font-size:13px}
 .evlist li span:last-child{font-family:var(--f-body);min-width:0;overflow-wrap:anywhere}
-.evlist .t{color:var(--dim)}.evlist .shift{color:var(--gold)}
+.evlist .t{color:var(--dim)}
+.evbtn{all:unset;box-sizing:border-box;display:grid;grid-template-columns:5.5em 1fr;gap:8px;width:100%;padding:9px 2px;cursor:pointer;font-size:13px}
+.evbtn:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.evbtn span:last-child{font-family:var(--f-body);min-width:0;overflow-wrap:anywhere}.evlist .shift{color:var(--gold)}
 .tab{background:none;border:0;padding:8px 2px;min-height:48px;cursor:pointer;color:var(--dim);font-size:14px;border-radius:5px;white-space:nowrap}
 .tab[aria-selected="true"]{color:var(--ink);background:var(--win-2)}
 .tab[aria-selected="true"]::before{content:"▶ ";color:var(--gold)}
@@ -576,7 +579,7 @@ function askName(){
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 let tab="quest";
 try{tab=sessionStorage.getItem("lq.tab")||"quest"}catch(e){}
-let ui={buyConfirm:"",priceEdit:"",addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
+let ui={editEv:"",delConfirm:false,buyConfirm:"",priceEdit:"",addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
 const app=document.getElementById("app");
 
 function heroHTML(now){
@@ -956,19 +959,29 @@ function calTab(now){
   </section>
   <section class="win" aria-labelledby="h-day">
     <h2 class="win-title" id="h-day"><b>${sd.getMonth()+1}月${sd.getDate()}日(${WD[sd.getDay()]})</b><span>${clr?"★ 達成 "+clr+"件":""}</span></h2>
-    ${evs.length?`<ul class="evlist">${evs.map(e=>`<li><span class="mono ${isShift(e)?"shift":"t"}">${e.allDay?"終日":hm(e.start)+"〜"}</span><span>${esc(e.title||"予定")}${e.pending?` <small style="color:var(--dim)">(追加中)</small>`:""}</span></li>`).join("")}</ul>`
+    ${evs.length?`<ul class="evlist">${evs.map(e=>{
+        const canEdit=canAdd&&!e.pending&&e.k&&e.editable!==false;
+        const body=`<span class="mono ${isShift(e)?"shift":"t"}">${e.allDay?"終日":hm(e.start)+"〜"}</span><span>${esc(e.title||"予定")}${e.pending?` <small style="color:var(--dim)">(追加中)</small>`:""}${canAdd&&!e.pending&&e.editable===false?` <small style="color:var(--dim)">(このカレンダーは編集できません)</small>`:""}${canEdit?` <small style="color:var(--dim)">✎</small>`:""}</span>`;
+        if(ui.editEv&&ui.editEv===e.k)return `<li style="display:block">${eventForm(sel,e)}</li>`;
+        return canEdit?`<li style="padding:0"><button class="evbtn" data-evedit="${esc(e.k)}" aria-label="${esc(e.title||"予定")} を編集">${body}</button></li>`:`<li>${body}</li>`;
+      }).join("")}</ul>`
       :`<div class="empty">この日の予定はありません。</div>`}
     ${canAdd?(ui.addEvent?eventForm(sel):`<div style="margin-top:8px"><button class="btn" id="open-ev">＋ この日に予定を追加</button></div>`)
       :`<p class="note" style="margin:8px 0 0">予定の追加は、ウィジェットから開いたゲームでできます。</p>`}
   </section>`;
 }
-function eventForm(ds){
-  return `<form class="form" id="ev-form">
-    <label for="ev-title">予定の名前<input id="ev-title" maxlength="60" placeholder="例:バイト / 歯医者" required></label>
+function eventForm(ds,ev){
+  const t2=ms=>{const d=new Date(ms);return pad(d.getHours())+":"+pad(d.getMinutes())};
+  const date=ev?ymd(new Date(ev.start)):ds;
+  return `<form class="form" id="ev-form" ${ev?'style="margin:0;border:0;padding:6px 0"':""}>
+    <label for="ev-title">予定の名前<input id="ev-title" maxlength="60" placeholder="例:バイト / 歯医者" value="${ev?esc(ev.title||""):""}" required></label>
+    <label for="ev-date">日付<input id="ev-date" type="date" value="${date}" required></label>
     <label>時間${`<div class="seg"><button type="button" data-seg="evAllDay" data-v="0" aria-pressed="${!ui.evAllDay}">時間を決める</button><button type="button" data-seg="evAllDay" data-v="1" aria-pressed="${!!ui.evAllDay}">終日</button></div>`}</label>
-    ${ui.evAllDay?"":`<div class="row"><label for="ev-start">開始<input id="ev-start" type="time" value="10:00" required></label><label for="ev-end">終了<input id="ev-end" type="time" value="11:00" required></label></div>`}
-    <p class="note" style="margin:0">iPhoneの標準のカレンダーに追加されます(TimeTreeにも表示されます)。</p>
-    <div class="row"><button class="btn ghost" type="button" id="cancel-ev">やめる</button><button class="btn go" type="submit">追加する</button></div>
+    ${ui.evAllDay?"":`<div class="row"><label for="ev-start">開始<input id="ev-start" type="time" value="${ev&&!ev.allDay?t2(ev.start):"10:00"}" required></label><label for="ev-end">終了<input id="ev-end" type="time" value="${ev&&!ev.allDay?t2(ev.end):"11:00"}" required></label></div>`}
+    ${ev?`<p class="note" style="margin:0">カレンダー:${esc(ev.cal||"")}</p>`:`<p class="note" style="margin:0">iPhoneの標準のカレンダーに追加されます(TimeTreeにも表示されます)。</p>`}
+    <div class="row"><button class="btn ghost" type="button" id="cancel-ev">やめる</button><button class="btn go" type="submit">${ev?"保存する":"追加する"}</button></div>
+    ${ev?(ui.delConfirm?`<div class="row"><button class="btn" type="button" id="del-ev-yes" style="border-color:var(--danger);color:var(--danger)">本当に削除する</button></div>`
+      :`<div class="row"><button class="btn ghost small" type="button" id="del-ev">この予定を削除</button></div>`):""}
   </form>`;
 }
 
@@ -1027,11 +1040,13 @@ app.addEventListener("click",e=>{
   const b=e.target.closest("button");if(!b)return;
   if(b.dataset.do){const[k,i]=b.dataset.do.split(":");complete(k,i);return}
   if(b.dataset.undo){const[k,i]=b.dataset.undo.split(":");undo(k,i);return}
-  if(b.dataset.day){ui.calSel=b.dataset.day;ui.addEvent=false;render();return}
+  if(b.dataset.evedit!==undefined){const e=(MONTH||[]).find(x=>x.k===b.dataset.evedit);if(!e)return;
+    ui.editEv=e.k;ui.evAllDay=!!e.allDay;ui.addEvent=false;ui.delConfirm=false;render();return}
+  if(b.dataset.day){ui.calSel=b.dataset.day;ui.addEvent=false;ui.editEv="";ui.delConfirm=false;render();return}
   if(b.dataset.calnav){const[y,m]=ui.calMonth.split("-").map(Number);const d=new Date(y,m-1+Number(b.dataset.calnav),1);
     ui.calMonth=d.getFullYear()+"-"+pad(d.getMonth()+1);ui.addEvent=false;render();return}
   if(b.dataset.seg==="remDue"){ui.remDue=b.dataset.v;const t=document.getElementById("rem-title").value;render();document.getElementById("rem-title").value=t;return}
-  if(b.dataset.seg==="evAllDay"){ui.evAllDay=b.dataset.v==="1";const t=document.getElementById("ev-title").value;render();document.getElementById("ev-title").value=t;return}
+  if(b.dataset.seg==="evAllDay"){ui.evAllDay=b.dataset.v==="1";const t=document.getElementById("ev-title").value,d=document.getElementById("ev-date").value;render();document.getElementById("ev-title").value=t;document.getElementById("ev-date").value=d;return}
   if(b.dataset.seg){ui[b.dataset.seg]=b.dataset.seg==="qDiff"?Number(b.dataset.v):b.dataset.v;
     b.parentElement.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));return}
   if(b.dataset.del){state.custom=state.custom.filter(c=>c.id!==b.dataset.del);save();render();return}
@@ -1056,8 +1071,12 @@ app.addEventListener("click",e=>{
     case"make-wishlist":wishListCreating=true;pushOp({type:"makeWishList"});render();break;
     case"open-rem":ui.addRem=true;render();document.getElementById("rem-title").focus();break;
     case"cancel-rem":ui.addRem=false;render();break;
-    case"open-ev":ui.addEvent=true;render();document.getElementById("ev-title").focus();break;
-    case"cancel-ev":ui.addEvent=false;render();break;
+    case"open-ev":ui.addEvent=true;ui.editEv="";ui.evAllDay=false;render();document.getElementById("ev-title").focus();break;
+    case"cancel-ev":ui.addEvent=false;ui.editEv="";ui.delConfirm=false;render();break;
+    case"del-ev":ui.delConfirm=true;render();break;
+    case"del-ev-yes":{const e=(MONTH||[]).find(x=>x.k===ui.editEv);if(e){pushOp({type:"deleteEvent",k:e.k});MONTH=MONTH.filter(x=>x!==e);
+      if(EVENTS)EVENTS=EVENTS.filter(x=>!(x.id===e.id&&x.start===e.start));say([`予定「${e.title}」を 削除した。`])}
+      ui.editEv="";ui.delConfirm=false;render();break}
     case"open-add":ui.addQuest=true;render();document.getElementById("q-title").focus();break;
     case"cancel-add":ui.addQuest=false;render();break;
     case"open-reward":ui.addReward=true;render();document.getElementById("r-title").focus();break;
@@ -1111,7 +1130,7 @@ app.addEventListener("submit",e=>{
     say([`リマインダー「${title}」を 追加した！`,showsHere?"クエストに すぐ並ぶよ。":"期限の2週間前になると クエストに並ぶよ。"]);
   }else if(e.target.id==="ev-form"){
     const title=document.getElementById("ev-title").value.trim();if(!title)return;
-    const base=parseYmd(ui.calSel);let start,end,allDay=!!ui.evAllDay;
+    const base=parseYmd(document.getElementById("ev-date").value||ui.calSel);let start,end,allDay=!!ui.evAllDay;
     if(allDay){start=base.getTime();end=start+864e5}
     else{
       const[sh,sm]=document.getElementById("ev-start").value.split(":").map(Number);
@@ -1120,9 +1139,16 @@ app.addEventListener("submit",e=>{
       end=new Date(base.getFullYear(),base.getMonth(),base.getDate(),eh,em).getTime();
       if(end<=start)end+=864e5; // 日をまたぐシフト
     }
-    pushOp({type:"addEvent",title:title.slice(0,60),start,end,allDay});
-    pendingEvents.push({id:"p"+Date.now(),title,start,end,allDay,cal:"",pending:true});
-    ui.addEvent=false;render();say([`予定「${title}」を カレンダーに追加した！`]);
+    if(ui.editEv){
+      const e=(MONTH||[]).find(x=>x.k===ui.editEv);
+      if(e){pushOp({type:"editEvent",k:e.k,title:title.slice(0,60),start,end,allDay});
+        Object.assign(e,{title,start,end,allDay,k:"pending-edit"});say([`予定「${title}」を 変更した！`])}
+      ui.editEv="";ui.delConfirm=false;ui.calSel=ymd(base);render();
+    }else{
+      pushOp({type:"addEvent",title:title.slice(0,60),start,end,allDay});
+      pendingEvents.push({id:"p"+Date.now(),title,start,end,allDay,cal:"",pending:true});
+      ui.addEvent=false;ui.calSel=ymd(base);render();say([`予定「${title}」を カレンダーに追加した！`]);
+    }
   }else if(e.target.id==="import-form"){
     const raw=document.getElementById("import-box").value.trim();
     try{

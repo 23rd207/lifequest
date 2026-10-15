@@ -165,9 +165,14 @@ async function tomorrowEvents(){
       .sort((a,b) => (a.isAllDay ? 0 : 1) - (b.isAllDay ? 0 : 1) || a.startDate - b.startDate).map(mapEvent);
   } catch(e) { return []; }
 }
+// 編集・削除のために、読み込んだ予定を覚えておく(くり返し予定は日時で区別)
+const eventMap = new Map();
 function mapEvent(e){
-  return { id: e.identifier, title: e.title, start: e.startDate.getTime(), end: e.endDate.getTime(),
-    allDay: e.isAllDay, cal: e.calendar ? e.calendar.title : "" };
+  const k = e.identifier + "|" + e.startDate.getTime();
+  eventMap.set(k, e);
+  return { id: e.identifier, k, title: e.title, start: e.startDate.getTime(), end: e.endDate.getTime(),
+    allDay: e.isAllDay, cal: e.calendar ? e.calendar.title : "",
+    editable: e.calendar ? e.calendar.allowsContentModifications !== false && !e.calendar.isSubscribed : true };
 }
 // こよみ画面用:先月の1日〜再来月の1日まで
 async function monthEvents(){
@@ -325,6 +330,19 @@ async function openGame(){
           if (cal) r.calendar = cal;
           r.save();
           remAdded = true;
+        } else if (op.type === "editEvent") {
+          const ev = eventMap.get(op.k);
+          if (ev) {
+            ev.title = String(op.title || ev.title);
+            ev.isAllDay = !!op.allDay;
+            ev.startDate = new Date(op.start);
+            ev.endDate = new Date(op.allDay ? op.start + 86399000 : op.end);
+            ev.save();
+            added = true;
+          }
+        } else if (op.type === "deleteEvent") {
+          const ev = eventMap.get(op.k);
+          if (ev) { ev.remove(); added = true; }
         } else if (op.type === "addEvent") {
           const ev = new CalendarEvent();
           ev.title = String(op.title || "予定");
