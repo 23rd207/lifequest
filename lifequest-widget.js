@@ -85,42 +85,51 @@ function loadSave(){ try { return fm.fileExists(SAVE) ? fm.readString(SAVE) : nu
 function writeSave(str){ try { JSON.parse(str); fm.writeString(SAVE, str); } catch(e){} }
 
 /* ---- ゲームを開く ---- */
-async function openGame(){
-  let html = null;
+const wait = ms => new Promise(r => Timer.schedule(ms, false, r));
+async function fetchGame(timeout){
   try {
     const req = new Request(GAME_URL + "?t=" + Date.now());
-    req.timeoutInterval = 8;
-    html = await req.loadString();
-    if (html && html.includes("ライフクエスト")) fm.writeString(HTML_CACHE, html); else html = null;
+    req.timeoutInterval = timeout;
+    const html = await req.loadString();
+    if (html && html.includes("ライフクエスト") && html.includes("<head>")) { fm.writeString(HTML_CACHE, html); return html; }
   } catch(e) {}
-  if (!html && fm.fileExists(HTML_CACHE)) html = fm.readString(HTML_CACHE);
+  return null;
+}
+async function openGame(){
+  // 保存済みの版ですぐ開く。なければダウンロードを待つ(初回だけ)
+  let html = fm.fileExists(HTML_CACHE) ? fm.readString(HTML_CACHE) : null;
+  const hadCache = !!html;
+  if (!html) html = await fetchGame(10);
   if (!html) {
-    const a = new Alert(); a.title = "ゲームを開けませんでした"; a.message = "はじめの1回はインターネットにつないで開いてください。"; a.addAction("OK"); await a.present();
+    const a = new Alert(); a.title = "ゲームを開けませんでした";
+    a.message = "はじめの1回はインターネットにつながった状態で開いてください。"; a.addAction("OK"); await a.present();
     return;
   }
   const saved = loadSave();
   const boot = "<script>window.__LQ_HOST__='scriptable';window.__LQ_STATE__=" + JSON.stringify(saved) + ";</script>";
-  html = html.replace("<head>", "<head>" + boot);
+  html = html.replace("<head>", "<head>" + boot)
+    // フォントの読み込みを待たずに表示する
+    .replace(/<link rel="stylesheet" href="(https:\/\/fonts\.googleapis\.com[^"]+)">/, '<link rel="stylesheet" href="$1" media="print" onload="this.media=\'all\'">');
 
   const wv = new WebView();
-  await wv.loadHTML(html, GAME_URL);
   let open = true;
-  const shown = wv.present(false).then(() => { open = false; });
-  // ゲームがセーブするたびに受け取ってファイルに書く(1.5秒ごとに確認)
-  const listen = `(function(){
-    function take(){ var s=window.__lqPending; window.__lqPending=null; return s||null; }
-    var now=take(); if(now){ completion(now); return; }
-    var done=false;
-    function h(){ if(done) return; done=true; window.removeEventListener('lq-save',h); completion(take()); }
-    window.addEventListener('lq-save',h);
-    setTimeout(function(){ if(done) return; done=true; window.removeEventListener('lq-save',h); completion(null); },1500);
-  })()`;
+  wv.loadHTML(html, GAME_URL);
+  const shown = wv.present(false).then(() => { open = false; }, () => { open = false; });
+  // 次回のために、裏で最新版を取っておく
+  if (hadCache) fetchGame(10);
+  // 1秒ごとにゲームのセーブを受け取ってファイルに書く
   while (open) {
-    try { const s = await wv.evaluateJavaScript(listen, true); if (s) writeSave(s); }
-    catch(e) { break; }
+    await wait(1000);
+    try {
+      const s = await wv.evaluateJavaScript("(function(){var s=window.__lqPending||null;window.__lqPending=null;return s;})()", false);
+      if (typeof s === "string" && s) writeSave(s);
+    } catch(e) {}
   }
   await shown;
-  try { const s = await wv.evaluateJavaScript("window.__lqPending||null", false); if (s) writeSave(s); } catch(e) {}
+  try {
+    const s = await wv.evaluateJavaScript("window.__lqPending||null", false);
+    if (typeof s === "string" && s) writeSave(s);
+  } catch(e) {}
 }
 
 /* ---- ウィジェット ---- */
@@ -210,6 +219,9 @@ function buildWidget(){
 if (config.runsInWidget) {
   Script.setWidget(buildWidget());
 } else {
-  await openGame();
+  try { await openGame(); }
+  catch(e) {
+    const a = new Alert(); a.title = "エラーが起きました"; a.message = String(e); a.addAction("OK"); await a.present();
+  }
 }
 Script.complete();
