@@ -279,22 +279,22 @@ async function buildWidget(){
     el.font = Font.systemFont(size); el.textColor = C.gold; el.lineLimit = 1;
   }
   function statusBlock(stack){
-    text(stack, titleFor(L.lv), 10, C.gold);
-    text(stack, st && st.name ? st.name : "ゆうしゃ", 15, C.ink, true);
+    text(stack, titleFor(L.lv), 12, C.gold);
+    text(stack, st && st.name ? st.name : "ゆうしゃ", 17, C.ink, true);
     const row = stack.addStack(); row.centerAlignContent();
     text(row, "Lv ", 10, C.dim); text(row, String(L.lv), 22, C.ink, true);
     bar(stack, L.cur/L.need, 8);
     stack.addSpacer(3);
-    text(stack, (st ? st.gold || 0 : 0)+"G ・ 連続"+streak+"日", 10, C.dim);
+    text(stack, (st ? st.gold || 0 : 0)+"G ・ 連続"+streak+"日", 12, C.dim);
     const rr = stack.addStack(); rr.centerAlignContent();
-    text(rr, "リセット ", 10, C.dim);
-    const d = rr.addDate(nextReset(now)); d.applyTimerStyle(); d.font = Font.mediumMonospacedSystemFont(10); d.textColor = C.ink;
+    text(rr, "リセット ", 12, C.dim);
+    const d = rr.addDate(nextReset(now)); d.applyTimerStyle(); d.font = Font.mediumMonospacedSystemFont(12); d.textColor = C.ink;
   }
   function questLine(stack, q){
     const s = done.has(q.id) ? "done" : questState(q, now);
     const row = stack.addStack(); row.centerAlignContent(); row.spacing = 5;
-    text(row, { done:"✔", open:"▶", locked:"…", expired:"×" }[s], 11, { done:C.gold, open:C[q.s] || C.ink, locked:C.dim, expired:C.danger }[s], true);
-    text(row, q.t, 12, s === "open" ? C.ink : C.dim, s === "open");
+    text(row, { done:"✔", open:"▶", locked:"…", expired:"×" }[s], 13, { done:C.gold, open:C[q.s] || C.ink, locked:C.dim, expired:C.danger }[s], true);
+    text(row, q.t, 14, s === "open" ? C.ink : C.dim, s === "open");
   }
 
   function eventLine(stack, e, size){
@@ -305,68 +305,64 @@ async function buildWidget(){
     const tm = row.addText(e.allDay ? "終日 " : hm(e.start));
     tm.font = Font.mediumMonospacedSystemFont(size - 1); tm.textColor = shift ? C.gold : (nowIn ? C.ink : C.dim); tm.lineLimit = 1;
     text(row, (isDone ? "✔ " : "") + (e.title || "予定"), size, isDone ? C.dim : C.ink, !isDone && nowIn);
-    if (nowIn) text(row, "いま", 9, C.gold, true);
+    if (nowIn) text(row, "いま", 11, C.gold, true);
   }
   function eventsBlock(max, size){
     const head = w.addStack(); head.centerAlignContent();
-    text(head, "今日の予定", 11, C.gold, true);
+    text(head, "今日の予定", 13, C.gold, true);
     head.addSpacer();
     const d = new Date(now);
-    text(head, (d.getMonth()+1) + "/" + d.getDate() + "(" + "日月火水木金土"[d.getDay()] + ")", 10, C.dim);
+    text(head, (d.getMonth()+1) + "/" + d.getDate() + "(" + "日月火水木金土"[d.getDay()] + ")", 12, C.dim);
     w.addSpacer(4);
     if (!upcoming.length) text(w, evsRaw ? "このあとの予定はありません" : "タップしてカレンダーを許可してください", size - 1, C.dim);
     for (const e of upcoming.slice(0, max)) { eventLine(w, e, size); w.addSpacer(2); }
-    if (upcoming.length > max) text(w, "ほか " + (upcoming.length - max) + "件", 9, C.dim);
+    if (upcoming.length > max) text(w, "ほか " + (upcoming.length - max) + "件", 11, C.dim);
   }
   function footer(){
     const row = w.addStack(); row.centerAlignContent(); row.spacing = 6;
-    text(row, "Lv" + L.lv, 12, C.ink, true);
-    bar(row, L.cur/L.need, 7);
+    text(row, "Lv" + L.lv, 15, C.ink, true);
+    bar(row, L.cur/L.need, 8);
     row.addSpacer();
-    text(row, "デイリー " + nDone + "/" + quests.length, 10, nDone === quests.length ? C.gold : C.dim);
+    text(row, "デイリー " + nDone + "/" + quests.length, 13, nDone === quests.length ? C.gold : C.dim);
   }
   function footer2(){
     const row = w.addStack(); row.centerAlignContent(); row.spacing = 4;
-    text(row, (st ? st.gold || 0 : 0) + "G ・ 連続" + streak + "日" + (remsLeft.length ? " ・ リマインダー" + remsLeft.length : ""), 10, C.dim);
+    text(row, (st ? st.gold || 0 : 0) + "G ・ 連続" + streak + "日" + (remsLeft.length ? " ・ リマインダー" + remsLeft.length : ""), 12, C.dim);
     row.addSpacer();
-    const d = row.addDate(nextReset(now)); d.applyTimerStyle(); d.font = Font.mediumMonospacedSystemFont(10); d.textColor = C.dim; d.rightAlignText();
+    const d = row.addDate(nextReset(now)); d.applyTimerStyle(); d.font = Font.mediumMonospacedSystemFont(12); d.textColor = C.dim; d.rightAlignText();
   }
 
   if (family === "small") {
-    eventsBlock(2, 12);
+    eventsBlock(2, 14);
     w.addSpacer();
     footer();
   } else if (family === "medium") {
-    eventsBlock(3, 13);
+    eventsBlock(3, 15);
     w.addSpacer();
     footer();
     w.addSpacer(2);
     footer2();
   } else {
-    eventsBlock(4, 13);
+    eventsBlock(4, 15);
     w.addSpacer(10);
     const main = w.addStack(); main.spacing = 12;
     const left = main.addStack(); left.layoutVertically(); left.size = new Size(110, 0);
     statusBlock(left);
     const right = main.addStack(); right.layoutVertically(); right.spacing = 4;
-    text(right, "デイリーミッション " + nDone + "/" + quests.length, 10, C.dim);
+    text(right, "デイリーミッション " + nDone + "/" + quests.length, 12, C.dim);
     for (const q of quests) questLine(right, q);
     if (remsLeft.length) {
       w.addSpacer(8);
-      text(w, "リマインダー のこり" + remsLeft.length + "件", 10, C.dim);
-      for (const r of remsLeft.slice(0, 3)) {
+      text(w, "リマインダー のこり" + remsLeft.length + "件", 12, C.dim);
+      for (const r of remsLeft.slice(0, 2)) {
         const row = w.addStack(); row.spacing = 5;
-        text(row, r.overdue ? "!" : "▶", 11, r.overdue ? C.danger : C.ink, true);
-        text(row, r.title || "リマインダー", 12, C.ink);
+        text(row, r.overdue ? "!" : "▶", 13, r.overdue ? C.danger : C.ink, true);
+        text(row, r.title || "リマインダー", 14, C.ink);
       }
     }
-    w.addSpacer(6);
-    const wk = w.addStack(); wk.centerAlignContent(); wk.spacing = 6;
-    text(wk, "ウィークリー " + Math.min(week, WEEK_GOAL) + "/" + WEEK_GOAL, 10, C.dim);
-    bar(wk, week/WEEK_GOAL, 8);
     w.addSpacer();
   }
-  if (!st) text(w, "タップして冒険をはじめる", 9, C.dim);
+  if (!st) text(w, "タップして冒険をはじめる", 11, C.dim);
   return w;
 }
 
