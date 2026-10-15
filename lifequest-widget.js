@@ -162,6 +162,14 @@ async function eventsForDay(offset){
 async function todayEvents(){
   try { return (await eventsForDay(0)).slice(0, 12).map(mapEvent); } catch(e) { return null; }
 }
+// 近々の予定:明日から days 日先まで
+async function soonEvents(days){
+  try {
+    let out = [];
+    for (let i = 1; i <= days; i++) out = out.concat((await eventsForDay(i)).filter(e => !out.some(x => x.identifier === e.identifier && x.startDate.getTime() === e.startDate.getTime())));
+    return out.map(mapEvent);
+  } catch(e) { return []; }
+}
 async function tomorrowEvents(){
   try { return (await eventsForDay(1)).map(mapEvent); } catch(e) { return []; }
 }
@@ -497,7 +505,11 @@ async function buildWidget(){
     const d = new Date(now);
     text(head, (d.getMonth()+1) + "/" + d.getDate() + "(" + "日月火水木金土"[d.getDay()] + ")", 12, C.dim);
     w.addSpacer(4);
-    if (!upcoming.length) text(w, evsRaw ? "このあとの予定はありません" : "タップしてカレンダーを許可してください", size - 1, C.dim);
+    if (!upcoming.length) {
+      text(w, evsRaw ? "今日はこのあと予定なし" : "タップしてカレンダーを許可してください", size - 1, C.dim);
+      // 今日の予定がないときは、近々の予定を出す
+      if (evsRaw && soon.length && family !== "large" && family !== "extraLarge") { w.addSpacer(2); soonLines(Math.max(1, max - 1)); }
+    }
     for (const e of upcoming.slice(0, max)) { eventLine(w, e, size); w.addSpacer(2); }
     if (upcoming.length > max) text(w, "ほか " + (upcoming.length - max) + "件", 11, C.dim);
   }
@@ -518,6 +530,17 @@ async function buildWidget(){
 
   // 空いた行を埋めるための材料
   const tomorrow = await tomorrowEvents();
+  const soon = await soonEvents(7);
+  const dayLabel = ms => { const d = new Date(ms), gd = gameDate(now); const n = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(gd.getFullYear(), gd.getMonth(), gd.getDate())) / 864e5);
+    return (n === 1 ? "明日" : n === 2 ? "あさって" : (d.getMonth()+1) + "/" + d.getDate()) + "(" + "日月火水木金土"[d.getDay()] + ")"; };
+  function soonLines(max){
+    for (const e of soon.slice(0, max)) {
+      const row = w.addStack(); row.centerAlignContent(); row.spacing = 6;
+      const tm = row.addText(dayLabel(e.start) + (e.allDay ? "" : " " + hm(e.start)));
+      tm.font = Font.mediumMonospacedSystemFont(12); tm.textColor = (SHIFT_RE.test(e.title || "") || SHIFT_RE.test(e.cal || "")) ? C.gold : C.dim; tm.lineLimit = 1;
+      text(row, e.title || "予定", 14, C.ink);
+    }
+  }
   const openQuests = quests.filter(q => !done.has(q.id) && questState(q, now) === "open");
   const customsLeft = customs.filter(c => !c.done);
   function sectionTitle(str, right){
@@ -549,14 +572,19 @@ async function buildWidget(){
     for (const it of items.slice(0, slots)) itemLine(it[0], it[1], it[2], C.ink);
   }
 
+  // 今日の予定が少ないときは、近々の予定を優先して、なければ「次にやること」
+  function fillSoonOrNext(n){
+    if (soon.length) { w.addSpacer(6); sectionTitle("近々の予定"); soonLines(n); }
+    else fillNext(n);
+  }
   if (family === "small") {
     eventsBlock(2, 14);
-    if (upcoming.length < 2) fillNext(2 - upcoming.length);
+    if (upcoming.length === 1) fillSoonOrNext(1);
     w.addSpacer();
     footer();
   } else if (family === "medium") {
     eventsBlock(3, 15);
-    if (upcoming.length < 2) fillNext(1);
+    if (upcoming.length === 1) fillSoonOrNext(1);
     w.addSpacer();
     footer();
     w.addSpacer(2);
@@ -566,11 +594,12 @@ async function buildWidget(){
     const shownEv = Math.min(upcoming.length, 4);
     eventsBlock(4, 15);
     let used = 1 + Math.max(shownEv, 1) + (upcoming.length > 4 ? 1 : 0);
-    if (shownEv < 2 && tomorrow.length) {
+    if (shownEv < 3 && soon.length) {
       w.addSpacer(6);
-      sectionTitle("明日の予定");
-      tomorrowLines(2 - shownEv);
-      used += 1 + Math.min(2 - shownEv, tomorrow.length);
+      sectionTitle("近々の予定");
+      const n = Math.min(3 - shownEv, soon.length);
+      soonLines(n);
+      used += 1 + n;
     }
     w.addSpacer();
     const main = w.addStack(); main.spacing = 12;

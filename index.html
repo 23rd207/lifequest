@@ -197,6 +197,8 @@ button,input,select{font:inherit;color:inherit}
 .evlist li span:last-child{font-family:var(--f-body);min-width:0;overflow-wrap:anywhere}
 .evlist .t{color:var(--dim)}
 .evlist li.evli{display:block;padding:0}
+.evlist li.soon-day{display:block;padding:10px 2px 2px;border-bottom:0;color:var(--gold);font-size:13px}
+.evlist .pay{color:var(--c-bond)}
 .evbtn{all:unset;box-sizing:border-box;display:grid;grid-template-columns:5.5em 1fr;gap:8px;width:100%;padding:9px 2px;cursor:pointer;font-size:13px}
 .evbtn:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 .evbtn span:last-child{font-family:var(--f-body);min-width:0;overflow-wrap:anywhere}.evlist .shift{color:var(--gold)}
@@ -751,6 +753,33 @@ function collectRemsDoneElsewhere(){
 }
 
 function hm(ms){const d=new Date(ms);return pad(d.getHours())+":"+pad(d.getMinutes())}
+// 近々の予定:明日から7日先まで(カレンダーの予定と支払い)
+function soonList(days){
+  const t=parseYmd(today()),from=new Date(t.getFullYear(),t.getMonth(),t.getDate()+1,DAY_START).getTime();
+  const to=new Date(t.getFullYear(),t.getMonth(),t.getDate()+1+days,DAY_START).getTime();
+  const tomorrowDs=ymd(new Date(t.getFullYear(),t.getMonth(),t.getDate()+1));
+  const evs=(MONTH||[]).filter(e=>e.allDay?(ymd(new Date(e.start))>=tomorrowDs&&e.start<to):(e.start>=from&&e.start<to))
+    .map(e=>({kind:"ev",ds:ymd(new Date(e.start)),time:e.allDay?"終日":hm(e.start),title:e.title||"予定",shift:isShift(e),sort:e.allDay?parseYmd(ymd(new Date(e.start))).getTime():e.start}));
+  const pays=(PAYS||[]).filter(p=>p.due&&!paidNow.has(p.id)&&ymd(new Date(p.due))>=tomorrowDs&&p.due<to)
+    .map(p=>({kind:"pay",ds:ymd(new Date(p.due)),time:"支払",title:p.title+(p.amount?" "+yen(p.amount):""),sort:p.due+1}));
+  return evs.concat(pays).sort((a,b)=>a.sort-b.sort);
+}
+function soonSection(){
+  if(!MONTH)return"";
+  const items=soonList(7);
+  const t=parseYmd(today());
+  const label=ds=>{const d=parseYmd(ds),n=Math.round((d-t)/864e5);return (n===1?"明日":n===2?"あさって":(d.getMonth()+1)+"/"+d.getDate())+"("+WD[d.getDay()]+")"};
+  let last="",rows="";
+  for(const it of items.slice(0,12)){
+    if(it.ds!==last){rows+=`<li class="soon-day">${label(it.ds)}</li>`;last=it.ds}
+    rows+=`<li><span class="mono ${it.kind==="pay"?"pay":it.shift?"shift":"t"}">${it.time}</span><span>${esc(it.title)}</span></li>`;
+  }
+  return `<section class="win" aria-labelledby="h-soon">
+    <h2 class="win-title" id="h-soon"><b>近々の予定</b><span>これから1週間</span></h2>
+    ${items.length?`<ul class="evlist">${rows}</ul>${items.length>12?`<p class="note" style="margin:6px 0 0">ほか ${items.length-12}件は「こよみ」で見られます。</p>`:""}`
+      :`<div class="empty">この先1週間の予定はありません。</div>`}
+  </section>`;
+}
 function eventSection(now){
   const qs=eventQuests();
   const dn=qs.filter(q=>state.events.done[q.id]).length;
@@ -813,7 +842,7 @@ function questTab(now){
     <p class="note" style="margin:6px 0 0">ミッションは毎朝4時に入れ替わります。朝・夜のミッションはその時間帯にしか受注できません。</p>
   </section>
 
-  ${EVENTS?eventSection(now):(IN_WIDGET_APP?`<section class="win"><h2 class="win-title"><b>今日の予定クエスト</b></h2><div class="empty">カレンダーを読めませんでした。iPhoneの「設定」→「Scriptable」→「カレンダー」を「フルアクセス」にしてください。</div></section>`:"")}
+  ${EVENTS?eventSection(now)+soonSection():(IN_WIDGET_APP?`<section class="win"><h2 class="win-title"><b>今日の予定クエスト</b></h2><div class="empty">カレンダーを読めませんでした。iPhoneの「設定」→「Scriptable」→「カレンダー」を「フルアクセス」にしてください。</div></section>`:"")}
 
   ${REMS?remSection(now):`<section class="win"><h2 class="win-title"><b>リマインダー</b></h2><div class="empty">${IN_WIDGET_APP
     ?"リマインダーを読めませんでした。iPhoneの「設定」→「Scriptable」→「リマインダー」をオンにして、もう一度ウィジェットから開いてください。"
