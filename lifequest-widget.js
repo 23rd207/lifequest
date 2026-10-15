@@ -154,22 +154,26 @@ async function monthEvents(){
   } catch(e) { return null; }
 }
 
-/* ---- リマインダー(今日が期限・期限切れ・今日完了したもの) ---- */
+/* ---- リマインダー(期限が2週間以内・期限切れ・今日完了したもの) ---- */
+const REM_DAYS = 14;
 const remMap = new Map();
 async function loadReminders(){
   try {
     const now = new Date();
     const gd = gameDate(now), gds = ymd(gd);
-    const dayEnd = new Date(gd.getFullYear(), gd.getMonth(), gd.getDate()+1, DAY_START);
+    // 今日を含めて14日目の終わりまで
+    const rangeEnd = new Date(gd.getFullYear(), gd.getMonth(), gd.getDate()+REM_DAYS, DAY_START);
+    const lastDay = ymd(new Date(gd.getFullYear(), gd.getMonth(), gd.getDate()+REM_DAYS-1));
     const dueToday = r => {
       if (!r.dueDate) return false;
-      return r.dueDateIncludesTime ? r.dueDate.getTime() < dayEnd.getTime() : ymd(r.dueDate) <= gds;
+      return r.dueDateIncludesTime ? r.dueDate.getTime() < rangeEnd.getTime() : ymd(r.dueDate) <= lastDay;
     };
     const overdue = r => r.dueDateIncludesTime ? r.dueDate.getTime() < now.getTime() : ymd(r.dueDate) < gds;
     const open = (await Reminder.allIncomplete()).filter(dueToday);
     let doneToday = [];
     try { doneToday = (await Reminder.completedToday()).filter(r => !r.dueDate || dueToday(r)); } catch(e) {}
-    const all = open.concat(doneToday).slice(0, 25);
+    const byDue = (a, b) => (a.dueDate ? a.dueDate.getTime() : 0) - (b.dueDate ? b.dueDate.getTime() : 0);
+    const all = open.sort(byDue).slice(0, 40).concat(doneToday);
     remMap.clear();
     return all.map(r => {
       remMap.set("r" + hash(String(r.identifier)).toString(36), r);

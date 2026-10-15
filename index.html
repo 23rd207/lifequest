@@ -610,16 +610,25 @@ function remQuests(){
       overdue:!!r.overdue,list:r.list||"",completed:!!r.completed};
   });
 }
+// 期限の表示:今日 → 時刻か「今日まで」、明日 → 「明日まで」、それ以降 → 「10/20(火)まで あと5日」
+function remDueLabel(q){
+  if(!q.due)return"期限なし";
+  const d=new Date(q.due),ds=q.hasTime?ymd(gameDate(d)):ymd(d),t=today();
+  const days=Math.round((parseYmd(ds)-parseYmd(t))/864e5);
+  if(days<=0)return q.hasTime?hm(q.due)+"まで":"今日まで";
+  if(days===1)return"明日"+(q.hasTime?" "+hm(q.due):"")+"まで";
+  return (d.getMonth()+1)+"/"+d.getDate()+"("+WD[d.getDay()]+")まで あと"+days+"日";
+}
 function remSection(now){
   const qs=remQuests();
   const dn=qs.filter(q=>state.rems.done[q.id]).length;
   return `<section class="win" aria-labelledby="h-rem">
     <h2 class="win-title" id="h-rem"><b>リマインダー</b><span class="mono">${qs.length?dn+" / "+qs.length:""}</span></h2>
     ${qs.length?`<ul class="qlist">${qs.map(q=>questRow(q,"rem",now)).join("")}</ul>`
-      :`<div class="empty">今日が期限のリマインダーはありません。</div>`}
+      :`<div class="empty">2週間以内に期限のリマインダーはありません。</div>`}
     ${pendingRems.length?`<ul class="evlist" style="margin-top:4px">${pendingRems.map(r=>`<li><span class="t mono">${r.label}</span><span>${esc(r.title)} <small style="color:var(--dim)">(追加中)</small></span></li>`).join("")}</ul>`:""}
     ${ui.addRem?remForm():`<div style="margin-top:8px"><button class="btn" id="open-rem">＋ リマインダーを追加</button></div>`}
-    <p class="note" style="margin:6px 0 0">今日が期限・期限切れのリマインダーが並びます。ここで達成すると、リマインダーアプリでも完了になります。</p>
+    <p class="note" style="margin:6px 0 0">期限が2週間以内のリマインダーと、期限切れのものが並びます。ここで達成すると、リマインダーアプリでも完了になります。</p>
   </section>`;
 }
 function remForm(){
@@ -689,7 +698,7 @@ function questRow(q,kind,now){
   }
   const when = kind==="daily" ? `<span class="chip">${WINDOWS[q.w].n}</span>`
     : kind==="event" ? `<span class="chip">${q.allDay?"終日":hm(q.start)+"〜"+hm(q.end)}</span>${q.shift?`<span class="chip rew">シフト</span>`:""}`
-    : kind==="rem" ? `${q.overdue&&!done?`<span class="chip expired-tag">期限切れ</span>`:`<span class="chip">${q.hasTime&&q.due?hm(q.due)+"まで":"今日まで"}</span>`}${q.list?`<span>${esc(q.list)}</span>`:""}`
+    : kind==="rem" ? `${q.overdue&&!done?`<span class="chip expired-tag">期限切れ</span>`:`<span class="chip">${remDueLabel(q)}</span>`}${q.list?`<span>${esc(q.list)}</span>`:""}`
     : `<span class="chip">${(REPEAT[q.r]||REPEAT.daily).chip}</span>`;
   const del = kind==="custom" ? `<button class="btn ghost small" data-del="${q.id}" aria-label="${esc(q.t)} を削除" style="margin-left:auto">削除</button>`:"";
   return `<li class="${cls}"><span class="cur" aria-hidden="true">▶</span><span class="q-t">${esc(q.t)}</span>${right}
@@ -979,10 +988,11 @@ app.addEventListener("submit",e=>{
     }
     const listEl=document.getElementById("rem-list");
     pushOp({type:"addRem",title:title.slice(0,80),due,hasTime,list:listEl?listEl.value:"",high:ui.remHigh==="1"});
-    const showsHere=due!==null&&ymd(new Date(due))<=today();
+    const lim=parseYmd(today());lim.setDate(lim.getDate()+13);
+    const showsHere=due!==null&&ymd(new Date(due))<=ymd(lim);
     if(showsHere)pendingRems.push({title,label});
     ui.addRem=false;render();
-    say([`リマインダー「${title}」を 追加した！`,showsHere?"クエストに すぐ並ぶよ。":"期限の日になると クエストに並ぶよ。"]);
+    say([`リマインダー「${title}」を 追加した！`,showsHere?"クエストに すぐ並ぶよ。":"期限の2週間前になると クエストに並ぶよ。"]);
   }else if(e.target.id==="ev-form"){
     const title=document.getElementById("ev-title").value.trim();if(!title)return;
     const base=parseYmd(ui.calSel);let start,end,allDay=!!ui.evAllDay;
