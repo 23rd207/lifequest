@@ -188,6 +188,7 @@ button,input,select{font:inherit;color:inherit}
 .day .dots{display:flex;gap:2px;flex-wrap:wrap;justify-content:center}
 .day .dot{width:5px;height:5px;border-radius:1px;background:var(--c-int)}
 .day .dot.shift{background:var(--gold)}
+.day .dot.pay{background:var(--c-bond)}
 .day.sun .n{color:var(--danger)}.day.sat .n{color:var(--c-int)}
 .legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11px;color:var(--dim);margin-top:8px}
 .legend i{display:inline-block;width:7px;height:7px;border-radius:1px;margin-right:4px;vertical-align:middle}
@@ -195,6 +196,7 @@ button,input,select{font:inherit;color:inherit}
 .evlist li{display:grid;grid-template-columns:5.5em 1fr;gap:8px;padding:7px 2px;border-bottom:1px dotted #ffffff1c;font-size:13px}
 .evlist li span:last-child{font-family:var(--f-body);min-width:0;overflow-wrap:anywhere}
 .evlist .t{color:var(--dim)}
+.evlist li.evli{display:block;padding:0}
 .evbtn{all:unset;box-sizing:border-box;display:grid;grid-template-columns:5.5em 1fr;gap:8px;width:100%;padding:9px 2px;cursor:pointer;font-size:13px}
 .evbtn:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 .evbtn span:last-child{font-family:var(--f-body);min-width:0;overflow-wrap:anywhere}.evlist .shift{color:var(--gold)}
@@ -655,6 +657,30 @@ function remDueLabel(q){
   return (d.getMonth()+1)+"/"+d.getDate()+"("+WD[d.getDay()]+")まで あと"+days+"日";
 }
 const REM_INFO = window.__LQ_REMINFO__ || null;
+// クレカ・支払いのリスト(ToDoではないので、クエストにしない)
+let PAYS = Array.isArray(window.__LQ_PAYS__) ? window.__LQ_PAYS__ : null;
+const paidNow = new Set();
+function payItems(){return (PAYS||[]).filter(p=>!paidNow.has(p.id)).sort((a,b)=>(a.due||9e15)-(b.due||9e15))}
+function yen(n){return "¥"+Number(n).toLocaleString("ja-JP")}
+function payLine(p){
+  const d=p.due?new Date(p.due):null,t=today();
+  const days=d?Math.round((parseYmd(ymd(d))-parseYmd(t))/864e5):null;
+  const when=!d?"日付なし":days<0?`<span style="color:var(--danger)">${d.getMonth()+1}/${d.getDate()} 過ぎています</span>`
+    :days===0?`<span style="color:var(--gold)">今日</span>`:days===1?"明日":`${d.getMonth()+1}/${d.getDate()}(${WD[d.getDay()]}) あと${days}日`;
+  return `<li class="q"><span class="cur" aria-hidden="true">¥</span><span class="q-t">${esc(p.title)}</span>
+    <button class="btn small" data-paid="${esc(String(p.id))}" aria-label="${esc(p.title)} を済にする">済</button>
+    <div class="q-sub"><span>${when}</span>${p.amount?`<span class="rew">${yen(p.amount)}</span>`:""}${p.list?`<span>${esc(p.list)}</span>`:""}</div></li>`;
+}
+function paySection(){
+  if(!IN_WIDGET_APP||PAYS===null)return"";
+  const items=payItems();
+  const total=items.filter(p=>p.amount&&p.due&&ymd(new Date(p.due)).slice(0,7)===today().slice(0,7)).reduce((a,p)=>a+p.amount,0);
+  return `<section class="win" aria-labelledby="h-pay">
+    <h2 class="win-title" id="h-pay"><b>支払い・クレカ</b><span>${total?"今月 "+yen(total):""}</span></h2>
+    ${items.length?`<ul class="qlist">${items.slice(0,12).map(payLine).join("")}</ul>`:`<div class="empty">未完了の支払いはありません。</div>`}
+    <p class="note" style="margin:6px 0 0">リマインダーの支払い用リストです。クエストとは別なので、経験値はつきません。「済」を押すとリマインダーでも完了になります。金額はタイトルかメモに「12,000円」のように書くと出ます。</p>
+  </section>`;
+}
 function remInfoLine(){
   if(!IN_WIDGET_APP)return"";
   const i=REM_INFO;
@@ -943,18 +969,18 @@ function calTab(now){
   for(let i=0;i<42;i++){
     const d=new Date(gridStart.getFullYear(),gridStart.getMonth(),gridStart.getDate()+i);
     if(i>=35&&d.getMonth()!==M-1)break;
-    const ds=ymd(d),evs=eventsOn(ds),clr=state.hist[ds]||0;
+    const ds=ymd(d),evs=eventsOn(ds),clr=state.hist[ds]||0,payDue=payItems().some(p=>p.due&&ymd(new Date(p.due))===ds);
     const cls=["day",d.getMonth()!==M-1?"out":"",ds===ymd(now)?"today":"",d.getDay()===0?"sun":d.getDay()===6?"sat":""].filter(Boolean).join(" ");
     cells.push(`<button class="${cls}" data-day="${ds}" aria-pressed="${ds===ui.calSel}" aria-label="${d.getMonth()+1}月${d.getDate()}日 予定${evs.length}件 達成${clr}件">
       <span class="n mono">${d.getDate()}</span>${clr?`<span class="clr mono">★${clr}</span>`:""}
-      <span class="dots">${evs.slice(0,4).map(e=>`<i class="dot ${isShift(e)?"shift":""}"></i>`).join("")}</span></button>`);
+      <span class="dots">${evs.slice(0,4).map(e=>`<i class="dot ${isShift(e)?"shift":""}"></i>`).join("")}${payDue?`<i class="dot pay"></i>`:""}</span></button>`);
   }
   const sel=ui.calSel, sd=parseYmd(sel), evs=eventsOn(sel), clr=state.hist[sel]||0;
   const canAdd=IN_WIDGET_APP;
   return `<section class="win" aria-labelledby="h-cal">
     <div class="cal-head"><button class="btn small" data-calnav="-1" aria-label="前の月">◀</button><b id="h-cal" class="mono">${Y}年 ${M}月</b><button class="btn small" data-calnav="1" aria-label="次の月">▶</button></div>
     <div class="cal">${["月","火","水","木","金","土","日"].map((w,i)=>`<span class="wd ${i===6?"sun":i===5?"sat":""}">${w}</span>`).join("")}${cells.join("")}</div>
-    <div class="legend"><span><i style="background:var(--gold)"></i>★ 達成したクエスト数</span><span><i style="background:var(--c-int)"></i>予定</span><span><i style="background:var(--gold)"></i>シフト</span></div>
+    <div class="legend"><span><i style="background:var(--gold)"></i>★ 達成したクエスト数</span><span><i style="background:var(--c-int)"></i>予定</span><span><i style="background:var(--gold)"></i>シフト</span>${PAYS?`<span><i style="background:var(--c-bond)"></i>支払い</span>`:""}</div>
     ${MONTH?"":`<p class="note" style="margin:8px 0 0">${IN_WIDGET_APP?"カレンダーを読めませんでした。iPhoneの「設定」→「Scriptable」→「カレンダー」を「フルアクセス」にしてください。":"iPhoneのカレンダーの予定は、ウィジェットから開いたときに表示されます。"}</p>`}
   </section>
   <section class="win" aria-labelledby="h-day">
@@ -962,13 +988,14 @@ function calTab(now){
     ${evs.length?`<ul class="evlist">${evs.map(e=>{
         const canEdit=canAdd&&!e.pending&&e.k&&e.editable!==false;
         const body=`<span class="mono ${isShift(e)?"shift":"t"}">${e.allDay?"終日":hm(e.start)+"〜"}</span><span>${esc(e.title||"予定")}${e.pending?` <small style="color:var(--dim)">(追加中)</small>`:""}${canAdd&&!e.pending&&e.editable===false?` <small style="color:var(--dim)">(このカレンダーは編集できません)</small>`:""}${canEdit?` <small style="color:var(--dim)">✎</small>`:""}</span>`;
-        if(ui.editEv&&ui.editEv===e.k)return `<li style="display:block">${eventForm(sel,e)}</li>`;
-        return canEdit?`<li style="padding:0"><button class="evbtn" data-evedit="${esc(e.k)}" aria-label="${esc(e.title||"予定")} を編集">${body}</button></li>`:`<li>${body}</li>`;
+        if(ui.editEv&&ui.editEv===e.k)return `<li class="evli">${eventForm(sel,e)}</li>`;
+        return canEdit?`<li class="evli"><button class="evbtn" data-evedit="${esc(e.k)}" aria-label="${esc(e.title||"予定")} を編集">${body}</button></li>`:`<li>${body}</li>`;
       }).join("")}</ul>`
       :`<div class="empty">この日の予定はありません。</div>`}
+    ${(()=>{const ps=payItems().filter(p=>p.due&&ymd(new Date(p.due))===sel);return ps.length?`<ul class="qlist" style="margin-top:6px">${ps.map(payLine).join("")}</ul>`:""})()}
     ${canAdd?(ui.addEvent?eventForm(sel):`<div style="margin-top:8px"><button class="btn" id="open-ev">＋ この日に予定を追加</button></div>`)
       :`<p class="note" style="margin:8px 0 0">予定の追加は、ウィジェットから開いたゲームでできます。</p>`}
-  </section>`;
+  </section>${paySection()}`;
 }
 function eventForm(ds,ev){
   const t2=ms=>{const d=new Date(ms);return pad(d.getHours())+":"+pad(d.getMinutes())};
@@ -1040,6 +1067,8 @@ app.addEventListener("click",e=>{
   const b=e.target.closest("button");if(!b)return;
   if(b.dataset.do){const[k,i]=b.dataset.do.split(":");complete(k,i);return}
   if(b.dataset.undo){const[k,i]=b.dataset.undo.split(":");undo(k,i);return}
+  if(b.dataset.paid!==undefined){const p=(PAYS||[]).find(x=>String(x.id)===b.dataset.paid);if(!p)return;
+    paidNow.add(p.id);pushOp({type:"payDone",id:p.id});render();say([`「${p.title}」を 済にした。`]);return}
   if(b.dataset.evedit!==undefined){const e=(MONTH||[]).find(x=>x.k===b.dataset.evedit);if(!e)return;
     ui.editEv=e.k;ui.evAllDay=!!e.allDay;ui.addEvent=false;ui.delConfirm=false;render();return}
   if(b.dataset.day){ui.calSel=b.dataset.day;ui.addEvent=false;ui.editEv="";ui.delConfirm=false;render();return}
