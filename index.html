@@ -834,7 +834,7 @@ function questRow(q,kind,now){
     right=`<button class="btn go" data-do="rem:${q.id}">達成</button>`;
   }else if(kind==="event"){
     if(!q.allDay&&now.getTime()<q.start){cls+=" locked";right=`<div class="wait">開始まで<br><span class="mono">${fmtHM(q.start-now.getTime())}</span></div>`}
-    else right=`<button class="btn go" data-do="event:${q.id}">${q.days?"今日のぶん<br>達成":"達成"}</button>`;
+    else right=`<button class="btn go" data-do="event:${q.id}">達成</button>`;
   }else{
     right=`<button class="btn go" data-do="custom:${q.id}">達成</button>`;
   }
