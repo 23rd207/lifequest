@@ -583,7 +583,7 @@ function askName(){
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 let tab="quest";
 try{tab=sessionStorage.getItem("lq.tab")||"quest"}catch(e){}
-let ui={addPay:false,editEv:"",delConfirm:false,buyConfirm:"",priceEdit:"",addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
+let ui={lastCal:"",addPay:false,editEv:"",delConfirm:false,buyConfirm:"",priceEdit:"",addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
 const app=document.getElementById("app");
 
 function heroHTML(now){
@@ -629,6 +629,8 @@ window.__lqSetEvents = function(todayList, monthList){
   render();
 };
 let pendingEvents = [];
+// 予定を書き込めるカレンダー(先頭がiPhoneの標準のカレンダー)
+const EV_CALS = Array.isArray(window.__LQ_EVCALS__) ? window.__LQ_EVCALS__ : [];
 const SHIFT_RE = /シフト|バイト|出勤|勤務|shift/i;
 function eventQuests(){
   if(!EVENTS)return[];
@@ -1068,7 +1070,8 @@ function eventForm(ds,ev){
     <label for="ev-date">日付<input id="ev-date" type="date" value="${date}" required></label>
     <label>時間${`<div class="seg"><button type="button" data-seg="evAllDay" data-v="0" aria-pressed="${!ui.evAllDay}">時間を決める</button><button type="button" data-seg="evAllDay" data-v="1" aria-pressed="${!!ui.evAllDay}">終日</button></div>`}</label>
     ${ui.evAllDay?"":`<div class="row"><label for="ev-start">開始<input id="ev-start" type="time" value="${ev&&!ev.allDay?t2(ev.start):"10:00"}" required></label><label for="ev-end">終了<input id="ev-end" type="time" value="${ev&&!ev.allDay?t2(ev.end):"11:00"}" required></label></div>`}
-    ${ev?`<p class="note" style="margin:0">カレンダー:${esc(ev.cal||"")}</p>`:`<p class="note" style="margin:0">iPhoneの標準のカレンダーに追加されます(TimeTreeにも表示されます)。</p>`}
+    ${EV_CALS.length?`<label for="ev-cal">カレンダー<select id="ev-cal">${(ev&&ev.cal&&!EV_CALS.includes(ev.cal)?[ev.cal]:[]).concat(EV_CALS).map(c=>`<option ${(ev?ev.cal===c:c===(ui.lastCal||EV_CALS[0]))?"selected":""}>${esc(c)}</option>`).join("")}</select></label>`
+      :(ev?`<p class="note" style="margin:0">カレンダー:${esc(ev.cal||"")}</p>`:`<p class="note" style="margin:0">iPhoneの標準のカレンダーに追加されます。</p>`)}
     <div class="row"><button class="btn ghost" type="button" id="cancel-ev">やめる</button><button class="btn go" type="submit">${ev?"保存する":"追加する"}</button></div>
     ${ev?(ui.delConfirm?`<div class="row"><button class="btn" type="button" id="del-ev-yes" style="border-color:var(--danger);color:var(--danger)">本当に削除する</button></div>`
       :`<div class="row"><button class="btn ghost small" type="button" id="del-ev">この予定を削除</button></div>`):""}
@@ -1138,7 +1141,7 @@ app.addEventListener("click",e=>{
   if(b.dataset.calnav){const[y,m]=ui.calMonth.split("-").map(Number);const d=new Date(y,m-1+Number(b.dataset.calnav),1);
     ui.calMonth=d.getFullYear()+"-"+pad(d.getMonth()+1);ui.addEvent=false;render();return}
   if(b.dataset.seg==="remDue"){ui.remDue=b.dataset.v;const t=document.getElementById("rem-title").value;render();document.getElementById("rem-title").value=t;return}
-  if(b.dataset.seg==="evAllDay"){ui.evAllDay=b.dataset.v==="1";const t=document.getElementById("ev-title").value,d=document.getElementById("ev-date").value;render();document.getElementById("ev-title").value=t;document.getElementById("ev-date").value=d;return}
+  if(b.dataset.seg==="evAllDay"){ui.evAllDay=b.dataset.v==="1";const t=document.getElementById("ev-title").value,d=document.getElementById("ev-date").value,ce=document.getElementById("ev-cal"),c=ce?ce.value:"";render();document.getElementById("ev-title").value=t;document.getElementById("ev-date").value=d;if(c&&document.getElementById("ev-cal"))document.getElementById("ev-cal").value=c;return}
   if(b.dataset.seg){ui[b.dataset.seg]=b.dataset.seg==="qDiff"?Number(b.dataset.v):b.dataset.v;
     b.parentElement.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));return}
   if(b.dataset.del){state.custom=state.custom.filter(c=>c.id!==b.dataset.del);save();render();return}
@@ -1234,6 +1237,7 @@ app.addEventListener("submit",e=>{
   }else if(e.target.id==="ev-form"){
     const title=document.getElementById("ev-title").value.trim();if(!title)return;
     const base=parseYmd(document.getElementById("ev-date").value||ui.calSel);let start,end,allDay=!!ui.evAllDay;
+    const calEl=document.getElementById("ev-cal"),cal=calEl?calEl.value:"";if(cal)ui.lastCal=cal;
     if(allDay){start=base.getTime();end=start+864e5}
     else{
       const[sh,sm]=document.getElementById("ev-start").value.split(":").map(Number);
@@ -1244,12 +1248,12 @@ app.addEventListener("submit",e=>{
     }
     if(ui.editEv){
       const e=(MONTH||[]).find(x=>x.k===ui.editEv);
-      if(e){pushOp({type:"editEvent",k:e.k,title:title.slice(0,60),start,end,allDay});
-        Object.assign(e,{title,start,end,allDay,k:"pending-edit"});say([`予定「${title}」を 変更した！`])}
+      if(e){pushOp({type:"editEvent",k:e.k,title:title.slice(0,60),start,end,allDay,cal});
+        Object.assign(e,{title,start,end,allDay,cal:cal||e.cal,k:"pending-edit"});say([`予定「${title}」を 変更した！`])}
       ui.editEv="";ui.delConfirm=false;ui.calSel=ymd(base);render();
     }else{
-      pushOp({type:"addEvent",title:title.slice(0,60),start,end,allDay});
-      pendingEvents.push({id:"p"+Date.now(),title,start,end,allDay,cal:"",pending:true});
+      pushOp({type:"addEvent",title:title.slice(0,60),start,end,allDay,cal});
+      pendingEvents.push({id:"p"+Date.now(),title,start,end,allDay,cal,pending:true});
       ui.addEvent=false;ui.calSel=ymd(base);render();say([`予定「${title}」を カレンダーに追加した！`]);
     }
   }else if(e.target.id==="import-form"){

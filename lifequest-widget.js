@@ -311,6 +311,14 @@ async function openGame(){
   const saved = loadSave();
   const [events, month, rems, wishes] = [await todayEvents(), await monthEvents(), await loadReminders(), await loadWishes()];
   const pays = await loadPays();
+  // 予定を書き込めるカレンダー(標準のカレンダーを先頭に)
+  let evCals = [];
+  try {
+    const def = await Calendar.defaultForEvents();
+    evCals = [def].concat((await Calendar.forEvents()).filter(c => c.identifier !== def.identifier
+      && c.allowsContentModifications !== false && !c.isSubscribed));
+  } catch(e) {}
+  const findEvCal = async title => evCals.find(c => c.title === title) || evCals[0] || await Calendar.defaultForEvents();
   let remCals = [];
   try {
     const def = await Calendar.defaultForReminders();
@@ -320,7 +328,7 @@ async function openGame(){
   const boot = "<script>window.__LQ_HOST__='scriptable';window.__LQ_STATE__=" + js(saved)
     + ";window.__LQ_EVENTS__=" + js(events) + ";window.__LQ_MONTH__=" + js(month)
     + ";window.__LQ_REMS__=" + js(rems) + ";window.__LQ_REMLISTS__=" + js(remCals.map(c => c.title)) + ";window.__LQ_REMINFO__=" + js(remInfo) + ";window.__LQ_WISHES__=" + js(wishes)
-    + ";window.__LQ_WISHLIST__=" + js(wishCal ? wishCal.title : "") + ";window.__LQ_PAYS__=" + js(pays) + ";window.__LQ_PAYLISTS__=" + js(payCals.map(c => c.title)) + ";</script>";
+    + ";window.__LQ_WISHLIST__=" + js(wishCal ? wishCal.title : "") + ";window.__LQ_EVCALS__=" + js(evCals.map(c => c.title)) + ";window.__LQ_PAYS__=" + js(pays) + ";window.__LQ_PAYLISTS__=" + js(payCals.map(c => c.title)) + ";</script>";
   html = html.replace("<head>", "<head>" + boot)
     // フォントの読み込みを待たずに表示する
     .replace(/<link rel="stylesheet" href="(https:\/\/fonts\.googleapis\.com[^"]+)">/, '<link rel="stylesheet" href="$1" media="print" onload="this.media=\'all\'">');
@@ -390,6 +398,7 @@ async function openGame(){
             ev.isAllDay = !!op.allDay;
             ev.startDate = new Date(op.start);
             ev.endDate = new Date(op.allDay ? op.start + 86399000 : op.end);
+            if (op.cal && ev.calendar && ev.calendar.title !== op.cal) { const c = evCals.find(x => x.title === op.cal); if (c) ev.calendar = c; }
             ev.save();
             added = true;
           }
@@ -402,7 +411,7 @@ async function openGame(){
           ev.isAllDay = !!op.allDay;
           ev.startDate = new Date(op.start);
           ev.endDate = new Date(op.allDay ? op.start + 86399000 : op.end);
-          ev.calendar = await Calendar.defaultForEvents();
+          ev.calendar = await findEvCal(op.cal);
           ev.save();
           added = true;
         }
