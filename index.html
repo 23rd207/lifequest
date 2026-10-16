@@ -325,6 +325,7 @@ const SPRITES = [
 const MAX_LV = 100;
 const WEEK_GOAL = 20;
 const ALL_CLEAR = {xp:50, g:30};
+const MULTI_BONUS = {xp:30, g:15}; // 何日も続く予定を全日達成したとき
 const WEEK_BONUS = {xp:150, g:80};
 
 /* ---------- time helpers ---------- */
@@ -381,6 +382,7 @@ function fresh(){
     rems:{date:"",done:{}},
     hist:{},
     wardrobe:{owned:{},wear:""},
+    multi:{},
     week:{key:"",n:0,bonus:false},
     custom:[
       {id:"c1",t:"(例)メールの返信をすませる",s:"int",d:1,r:"daily",doneOn:"",got:null},
@@ -403,6 +405,7 @@ function normalize(s){
   o.events=Object.assign(fresh().events,s.events||{});
   o.rems=Object.assign(fresh().rems,s.rems||{});
   if(!o.hist||typeof o.hist!=="object")o.hist={};
+  if(!o.multi||typeof o.multi!=="object")o.multi={};
   o.wardrobe=Object.assign({owned:{},wear:""},s.wardrobe||{});if(!o.wardrobe.owned||typeof o.wardrobe.owned!=="object")o.wardrobe.owned={};
   o.week=Object.assign(fresh().week,s.week||{});
   o.dayCount=Object.assign(fresh().dayCount,s.dayCount||{});
@@ -473,7 +476,8 @@ function rollover(now=new Date()){
   const t=today(now);let changed=false;
   if(state.daily.date!==t){state.daily={date:t,ids:dailyFor(t),done:{},bonus:false};changed=true}
   if(state.events.date!==t){state.events={date:t,done:{}};changed=true}
-  if(state.rems.date!==t){state.rems={date:t,done:{}};changed=true}
+  if(state.rems.date!==t){state.rems={date:t,done:{}};changed=true;
+    for(const k in state.multi){if((state.multi[k].end||0)<Date.now()-30*864e5)delete state.multi[k]}}
   if(state.dayCount.date!==t){state.dayCount={date:t,n:0};changed=true}
   const wk=weekKey(now);
   if(state.week.key!==wk){state.week={key:wk,n:0,bonus:false};changed=true}
@@ -636,8 +640,10 @@ function eventQuests(){
   if(!EVENTS)return[];
   return EVENTS.map(e=>{
     const shift=SHIFT_RE.test(e.title||"")||SHIFT_RE.test(e.cal||"");
+    const md=multiDay(e);
     return {id:"e"+hash(String(e.id)+"|"+e.start).toString(36),t:e.title||"(タイトルなしの予定)",
-      s:shift?"body":"mind",d:shift?3:2,shift,start:e.start,end:e.end,allDay:!!e.allDay,cal:e.cal||""};
+      s:shift?"body":"mind",d:shift?3:2,shift,start:e.start,end:e.end,allDay:!!e.allDay,cal:e.cal||"",
+      mkey:String(e.id)+"|"+e.start,days:md&&md.nth!==undefined&&(e.allDay||md.total>2||!/^翌/.test(md.end))?md.total:0};
   }).sort((a,b)=>(a.allDay?0:a.start)-(b.allDay?0:b.start));
 }
 const REM_STAT = [[/勉強|学校|課題|読書|仕事|資格/,"int"],[/運動|筋トレ|健康|ジム|ラン/,"body"],[/家族|友|連絡|恋人|プレゼント/,"bond"]];
@@ -828,12 +834,12 @@ function questRow(q,kind,now){
     right=`<button class="btn go" data-do="rem:${q.id}">達成</button>`;
   }else if(kind==="event"){
     if(!q.allDay&&now.getTime()<q.start){cls+=" locked";right=`<div class="wait">開始まで<br><span class="mono">${fmtHM(q.start-now.getTime())}</span></div>`}
-    else right=`<button class="btn go" data-do="event:${q.id}">達成</button>`;
+    else right=`<button class="btn go" data-do="event:${q.id}">${q.days?"今日のぶん<br>達成":"達成"}</button>`;
   }else{
     right=`<button class="btn go" data-do="custom:${q.id}">達成</button>`;
   }
   const when = kind==="daily" ? `<span class="chip">${WINDOWS[q.w].n}</span>`
-    : kind==="event" ? `<span class="chip">${multiDay(q)?(q.allDay?"終日 ":hm(q.start)+" ")+multiTxt(q,today()):(q.allDay?"終日":hm(q.start)+"〜"+hm(q.end))}</span>${q.shift?`<span class="chip rew">シフト</span>`:""}`
+    : kind==="event" ? `<span class="chip">${multiDay(q)?(q.allDay?"終日 ":hm(q.start)+" ")+multiTxt(q,today()):(q.allDay?"終日":hm(q.start)+"〜"+hm(q.end))}</span>${q.shift?`<span class="chip rew">シフト</span>`:""}${q.days?`<span class="chip">達成 ${((state.multi[q.mkey]||{}).days||[]).length}/${q.days}日</span>`:""}`
     : kind==="rem" ? `${q.overdue&&!done?`<span class="chip expired-tag">期限切れ</span>`:`<span class="chip">${remDueLabel(q)}</span>`}${q.list?`<span>${esc(q.list)}</span>`:""}`
     : `<span class="chip">${(REPEAT[q.r]||REPEAT.daily).chip}</span>`;
   const del = kind==="custom" ? `<button class="btn ghost small" data-del="${q.id}" aria-label="${esc(q.t)} を削除" style="margin-left:auto">削除</button>`:"";
@@ -1102,7 +1108,13 @@ function complete(kind,id){
   const D=DIFF[q.d];label=q.t;
   const lines=[`「${q.t}」を 達成した！`,`${D.xp} の経験値と ${D.g}G を手に入れた。`];
   let lv=grant(D.xp,D.g,q.s,label);
-  if(kind==="daily")state.daily.done[id]=true;else if(kind==="event")state.events.done[id]=true;
+  if(kind==="daily")state.daily.done[id]=true;else if(kind==="event"){state.events.done[id]=true;
+    // 何日も続く予定:日ごとに記録して、全日程そろったらボーナス
+    if(q.days){const m=state.multi[q.mkey]||(state.multi[q.mkey]={days:[],bonus:false,end:q.end});
+      if(!m.days.includes(today()))m.days.push(today());
+      if(!m.bonus&&m.days.length>=q.days){m.bonus=true;lv=grant(MULTI_BONUS.xp,MULTI_BONUS.g,q.s,"全日程達成:"+q.t)||lv;
+        lines.push(`「${q.t}」全${q.days}日 達成！ ボーナス ${MULTI_BONUS.xp}EXP！`)}
+      else lines.push(`全${q.days}日のうち ${m.days.length}日ぶん クリア。`)}}
   else if(kind==="rem"){state.rems.done[id]=true;pushOp({type:"rem",id,done:true})}else q.doneOn=today();
   if(countDone(1))lines.push(`連続 ${state.streak}日目！ よくがんばった。`);
   if(kind==="daily"&&!state.daily.bonus&&state.daily.ids.every(i=>state.daily.done[i])){
@@ -1120,7 +1132,9 @@ function undo(kind,id){
   let q,sameDay=true;
   if(kind==="daily"){q=POOL.find(p=>p.id===id);if(!q||!state.daily.done[id])return;delete state.daily.done[id];
     if(state.daily.bonus){state.daily.bonus=false;grant(ALL_CLEAR.xp,ALL_CLEAR.g,null,"デイリー オールクリア",-1)}}
-  else if(kind==="event"){q=eventQuests().find(e=>e.id===id);if(!q||!state.events.done[id])return;delete state.events.done[id]}
+  else if(kind==="event"){q=eventQuests().find(e=>e.id===id);if(!q||!state.events.done[id])return;delete state.events.done[id];
+    const m=q.days&&state.multi[q.mkey];
+    if(m){m.days=m.days.filter(d=>d!==today());if(m.bonus&&m.days.length<q.days){m.bonus=false;grant(MULTI_BONUS.xp,MULTI_BONUS.g,q.s,"全日程達成:"+q.t,-1)}}}
   else if(kind==="rem"){q=remQuests().find(r=>r.id===id);if(!q||!state.rems.done[id])return;delete state.rems.done[id];pushOp({type:"rem",id,done:false})}
   else{q=state.custom.find(c=>c.id===id);if(!q||!isDoneNow(q))return;sameDay=q.doneOn===today();q.doneOn=""}
   const D=DIFF[q.d];grant(D.xp,D.g,q.s,q.t,-1);countDone(-1,sameDay);
