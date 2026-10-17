@@ -633,6 +633,24 @@ window.__lqSetEvents = function(todayList, monthList){
   render();
 };
 let pendingEvents = [];
+// 読み込み済みの範囲。範囲外の月は、こよみで開いたときに Scriptable に頼んで読み込む
+const MONTH_RANGE = Array.isArray(window.__LQ_MONTHRANGE__) ? window.__LQ_MONTHRANGE__ : null;
+const loadedMonths = new Set(), requestedMonths = new Set();
+function monthLoaded(ym){
+  if(loadedMonths.has(ym))return true;
+  if(!MONTH_RANGE)return true;
+  const [y,m]=ym.split("-").map(Number),a=new Date(y,m-1,1).getTime(),b=new Date(y,m,1).getTime();
+  return a>=MONTH_RANGE[0]&&b<=MONTH_RANGE[1];
+}
+function ensureMonth(ym){
+  if(!IN_WIDGET_APP||!MONTH||monthLoaded(ym)||requestedMonths.has(ym))return;
+  requestedMonths.add(ym);pushOp({type:"loadMonth",ym});
+}
+window.__lqAddMonth = function(ym, list){
+  loadedMonths.add(ym);
+  if(Array.isArray(list)){const have=new Set((MONTH||[]).map(e=>e.k));MONTH=(MONTH||[]).concat(list.filter(e=>!have.has(e.k)))}
+  render();
+};
 // 予定を書き込めるカレンダー(先頭がiPhoneの標準のカレンダー)
 const EV_CALS = Array.isArray(window.__LQ_EVCALS__) ? window.__LQ_EVCALS__ : [];
 const SHIFT_RE = /シフト|バイト|出勤|勤務|shift/i;
@@ -1033,6 +1051,8 @@ function calTab(now){
   if(!ui.calMonth)ui.calMonth=t.slice(0,7);
   if(!ui.calSel)ui.calSel=ymd(now);
   const [Y,M]=ui.calMonth.split("-").map(Number);
+  ensureMonth(ui.calMonth);
+  const loading=IN_WIDGET_APP&&MONTH&&!monthLoaded(ui.calMonth);
   const first=new Date(Y,M-1,1);
   const startOffset=(first.getDay()+6)%7;
   const gridStart=new Date(Y,M-1,1-startOffset);
@@ -1049,7 +1069,7 @@ function calTab(now){
   const sel=ui.calSel, sd=parseYmd(sel), evs=eventsOn(sel), clr=state.hist[sel]||0;
   const canAdd=IN_WIDGET_APP;
   return `<section class="win" aria-labelledby="h-cal">
-    <div class="cal-head"><button class="btn small" data-calnav="-1" aria-label="前の月">◀</button><b id="h-cal" class="mono">${Y}年 ${M}月</b><button class="btn small" data-calnav="1" aria-label="次の月">▶</button></div>
+    <div class="cal-head"><button class="btn small" data-calnav="-1" aria-label="前の月">◀</button><b id="h-cal" class="mono">${Y}年 ${M}月${loading?` <small style="font-size:12px;color:var(--dim)">読み込み中…</small>`:""}</b><button class="btn small" data-calnav="1" aria-label="次の月">▶</button></div>
     <div class="cal">${["月","火","水","木","金","土","日"].map((w,i)=>`<span class="wd ${i===6?"sun":i===5?"sat":""}">${w}</span>`).join("")}${cells.join("")}</div>
     <div class="legend"><span><i style="background:var(--gold)"></i>★ 達成したクエスト数</span><span><i style="background:var(--c-int)"></i>予定</span><span><i style="background:var(--gold)"></i>シフト</span>${PAYS?`<span><i style="background:var(--c-bond)"></i>支払い</span>`:""}</div>
     ${MONTH?"":`<p class="note" style="margin:8px 0 0">${IN_WIDGET_APP?"カレンダーを読めませんでした。iPhoneの「設定」→「Scriptable」→「カレンダー」を「フルアクセス」にしてください。":"iPhoneのカレンダーの予定は、ウィジェットから開いたときに表示されます。"}</p>`}

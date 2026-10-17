@@ -192,13 +192,17 @@ function mapEvent(e){
     editable: e.calendar ? e.calendar.allowsContentModifications !== false && !e.calendar.isSubscribed : true };
 }
 // こよみ画面用:先月の1日〜再来月の1日まで
-async function monthEvents(){
+// こよみ用:最初は先月〜半年先まで。それ以外の月は、こよみで開いたときに読み込む
+const MONTH_BEFORE = 1, MONTH_AFTER = 6;
+function monthRange(){
+  const now = new Date();
+  return [new Date(now.getFullYear(), now.getMonth() - MONTH_BEFORE, 1), new Date(now.getFullYear(), now.getMonth() + MONTH_AFTER + 1, 1)];
+}
+async function monthEvents(from, to){
   try {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth()-1, 1);
-    const end = new Date(now.getFullYear(), now.getMonth()+2, 1);
-    const evs = await CalendarEvent.between(start, end, []);
-    return evs.filter(e => !/誕生日|Birthday/i.test(e.calendar ? e.calendar.title : "")).slice(0, 400).map(mapEvent);
+    const [s0, e0] = from ? [from, to] : monthRange();
+    const evs = await CalendarEvent.between(s0, e0, []);
+    return evs.filter(e => !/誕生日|Birthday/i.test(e.calendar ? e.calendar.title : "")).slice(0, 3000).map(mapEvent);
   } catch(e) { return null; }
 }
 
@@ -327,6 +331,7 @@ async function openGame(){
   const js = v => JSON.stringify(v).replace(/</g, "\\u003c");
   const boot = "<script>window.__LQ_HOST__='scriptable';window.__LQ_STATE__=" + js(saved)
     + ";window.__LQ_EVENTS__=" + js(events) + ";window.__LQ_MONTH__=" + js(month)
+    + ";window.__LQ_MONTHRANGE__=" + js(monthRange().map(d => d.getTime()))
     + ";window.__LQ_REMS__=" + js(rems) + ";window.__LQ_REMLISTS__=" + js(remCals.map(c => c.title)) + ";window.__LQ_REMINFO__=" + js(remInfo) + ";window.__LQ_WISHES__=" + js(wishes)
     + ";window.__LQ_WISHLIST__=" + js(wishCal ? wishCal.title : "") + ";window.__LQ_EVCALS__=" + js(evCals.map(c => c.title)) + ";window.__LQ_PAYS__=" + js(pays) + ";window.__LQ_PAYLISTS__=" + js(payCals.map(c => c.title)) + ";</script>";
   html = html.replace("<head>", "<head>" + boot)
@@ -391,6 +396,12 @@ async function openGame(){
           if (cal) r.calendar = cal;
           r.save();
           remAdded = true;
+        } else if (op.type === "loadMonth") {
+          // こよみで範囲外の月を開いたとき:その月の予定を読み込んで渡す
+          const [y, m] = String(op.ym).split("-").map(Number);
+          const from = new Date(y, m - 1, 1), to = new Date(y, m, 1);
+          const list = await monthEvents(from, to);
+          await wv.evaluateJavaScript("window.__lqAddMonth(" + js(op.ym) + "," + js(list || []) + ");0", false);
         } else if (op.type === "editEvent") {
           const ev = eventMap.get(op.k);
           if (ev) {
