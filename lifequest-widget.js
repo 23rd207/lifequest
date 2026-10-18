@@ -39,7 +39,7 @@ const POOL = [
   {id:"n2",t:"寝る30分前にスマホを置く",s:"mind",d:3,w:"night"},
   {id:"n3",t:"明日の予定を確認する",s:"int",d:1,w:"night"},
   {id:"n4",t:"湯船につかる",s:"body",d:1,w:"night"},
-  {id:"n5",t:"日付が変わる前にふとんに入る",s:"body",d:3,w:"night"}
+  {id:"n5",t:"日付が変わる前にふとんに入る",s:"body",d:3,w:"night",to:24}
 ];
 const TITLES = [[1, "村人"], [3, "旅立ちの若者"], [6, "見習い冒険者"], [10, "冒険者"], [15, "熟練の旅人"], [20, "騎士"], [30, "勇者"], [40, "英雄"], [50, "伝説の勇者"], [65, "星を継ぐ者"], [80, "人生の賢者"], [100, "人生を極めし者"]];
 // 階級ごとのドット絵(16x16)。1文字 = 1ドット、"." は透明
@@ -135,9 +135,9 @@ function periodKey(r, ds){
 }
 function questState(q, now){
   if (q.w === "any") return "open";
-  const w = WINDOWS[q.w], h = gameHour(now);
+  const w = WINDOWS[q.w], h = gameHour(now), to = q.to || w.to;
   if (h < w.from) return "locked";
-  if (h >= w.to) return "expired";
+  if (h >= to) return "expired";
   return "open";
 }
 
