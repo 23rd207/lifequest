@@ -703,12 +703,15 @@ function payItems(){
     .sort((a,b)=>(a.due||9e15)-(b.due||9e15));
 }
 function yen(n){return "¥"+Number(n).toLocaleString("ja-JP")}
+// 支払いの名前:タイトルに書かれた金額は外して表示(金額は別に出すので)。名前が残らなければリスト名
+const YEN_IN_TITLE=/[¥￥]\s*[0-9０-９][0-9０-９,，]*|[0-9０-９][0-9０-９,，]*\s*円/g;
+function payName(p){const n=String(p.title||"").replace(YEN_IN_TITLE,"").replace(/\s+/g," ").trim();return n||(p.amount?(p.list||"支払い"):String(p.title||"支払い"))}
 function payLine(p){
   const d=p.due?new Date(p.due):null,t=today();
   const days=d?Math.round((parseYmd(ymd(d))-parseYmd(t))/864e5):null;
   const when=!d?"日付なし":days<0?`<span style="color:var(--danger)">${d.getMonth()+1}/${d.getDate()} 過ぎています</span>`
     :days===0?`<span style="color:var(--gold)">今日</span>`:days===1?"明日":`${d.getMonth()+1}/${d.getDate()}(${WD[d.getDay()]}) あと${days}日`;
-  return `<li class="q"><span class="cur" aria-hidden="true">¥</span><span class="q-t">${esc(p.title)}</span>
+  return `<li class="q"><span class="cur" aria-hidden="true">¥</span><span class="q-t">${esc(payName(p))}</span>
     ${p.pending?`<span class="rl" style="color:var(--dim)">追加中</span>`:`<button class="btn small" data-paid="${esc(String(p.id))}" aria-label="${esc(p.title)} を済にする">済</button>`}
     <div class="q-sub"><span>${when}</span>${p.amount?`<span class="rew">${yen(p.amount)}</span>`:""}${p.list?`<span>${esc(p.list)}</span>`:""}</div></li>`;
 }
@@ -803,7 +806,7 @@ function soonList(days){
   const evs=(MONTH||[]).filter(e=>e.allDay?(ymd(new Date(e.start))>=tomorrowDs&&e.start<to):(e.start>=from&&e.start<to))
     .map(e=>({kind:"ev",ds:ymd(new Date(e.start)),time:e.allDay?"終日":hm(e.start),title:e.title||"予定",until:multiTxt(e),shift:isShift(e),sort:e.allDay?parseYmd(ymd(new Date(e.start))).getTime():e.start}));
   const pays=(PAYS||[]).filter(p=>p.due&&!paidNow.has(p.id)&&ymd(new Date(p.due))>=tomorrowDs&&p.due<to)
-    .map(p=>({kind:"pay",ds:ymd(new Date(p.due)),time:"支払",title:p.title+(p.amount?" "+yen(p.amount):""),sort:p.due+1}));
+    .map(p=>({kind:"pay",ds:ymd(new Date(p.due)),time:"支払",title:payName(p)+(p.amount?" "+yen(p.amount):""),sort:p.due+1}));
   return evs.concat(pays).sort((a,b)=>a.sort-b.sort);
 }
 function soonSection(){
@@ -1088,7 +1091,7 @@ function calTab(now){
         return canEdit?`<li class="evli"><button class="evbtn" data-evedit="${esc(e.k)}" aria-label="${esc(e.title||"予定")} を編集">${body}</button></li>`:`<li>${body}</li>`;
       }).join("")}</ul>`
       :`<div class="empty">この日の予定はありません。</div>`}
-    ${(()=>{const ps=payItems().filter(p=>p.due&&ymd(new Date(p.due))===sel);return ps.length?`<p class="note" style="margin:6px 0 0;color:var(--c-bond)">この日の支払い:${ps.map(p=>esc(p.title)+(p.amount?" "+yen(p.amount):"")).join("、")}</p>`:""})()}
+    ${(()=>{const ps=payItems().filter(p=>p.due&&ymd(new Date(p.due))===sel);return ps.length?`<p class="note" style="margin:6px 0 0;color:var(--c-bond)">この日の支払い:${ps.map(p=>esc(payName(p))+(p.amount?" "+yen(p.amount):"")).join("、")}</p>`:""})()}
     ${canAdd?(ui.addEvent?eventForm(sel):`<div style="margin-top:8px"><button class="btn" id="open-ev">＋ この日に予定を追加</button></div>`)
       :`<p class="note" style="margin:8px 0 0">予定の追加は、ウィジェットから開いたゲームでできます。</p>`}
   </section>${paySection()}`;
@@ -1173,7 +1176,7 @@ app.addEventListener("click",e=>{
   if(b.dataset.do){const[k,i]=b.dataset.do.split(":");complete(k,i);return}
   if(b.dataset.undo){const[k,i]=b.dataset.undo.split(":");undo(k,i);return}
   if(b.dataset.paid!==undefined){const p=(PAYS||[]).find(x=>String(x.id)===b.dataset.paid);if(!p)return;
-    paidNow.add(p.id);pushOp({type:"payDone",id:p.id});render();say([`「${p.title}」を 済にした。`]);return}
+    paidNow.add(p.id);pushOp({type:"payDone",id:p.id});render();say([`「${payName(p)}${p.amount?" "+yen(p.amount):""}」を 済にした。`]);return}
   if(b.dataset.evedit!==undefined){const e=(MONTH||[]).find(x=>x.k===b.dataset.evedit);if(!e)return;
     ui.editEv=e.k;ui.evAllDay=!!e.allDay;ui.addEvent=false;ui.delConfirm=false;render();return}
   if(b.dataset.day){ui.calSel=b.dataset.day;ui.addEvent=false;ui.editEv="";ui.delConfirm=false;render();return}
