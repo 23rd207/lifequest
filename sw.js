@@ -1,5 +1,5 @@
 // オフラインでも起動できるようにするキャッシュ。ファイルを更新したら VERSION を上げる
-const VERSION = "lq-v23";
+const VERSION = "lq-v24";
 const FILES = ["./", "index.html", "manifest.webmanifest", "icon-180.png", "icon-512.png"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));

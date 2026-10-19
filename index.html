@@ -808,7 +808,7 @@ function soonList(days){
   const t=parseYmd(today()),from=new Date(t.getFullYear(),t.getMonth(),t.getDate()+1,DAY_START).getTime();
   const to=new Date(t.getFullYear(),t.getMonth(),t.getDate()+1+days,DAY_START).getTime();
   const tomorrowDs=ymd(new Date(t.getFullYear(),t.getMonth(),t.getDate()+1));
-  const evs=(MONTH||[]).filter(e=>e.allDay?(ymd(new Date(e.start))>=tomorrowDs&&e.start<to):(e.start>=from&&e.start<to))
+  const evs=dedupe(MONTH||[]).filter(e=>e.allDay?(ymd(new Date(e.start))>=tomorrowDs&&e.start<to):(e.start>=from&&e.start<to))
     .map(e=>({kind:"ev",ds:ymd(new Date(e.start)),time:e.allDay?"終日":hm(e.start),title:e.title||"予定",until:multiTxt(e),shift:isShift(e),sort:e.allDay?parseYmd(ymd(new Date(e.start))).getTime():e.start}));
   const pays=(PAYS||[]).filter(p=>p.due&&!paidNow.has(p.id)&&ymd(new Date(p.due))>=tomorrowDs&&p.due<to)
     .map(p=>({kind:"pay",ds:ymd(new Date(p.due)),time:"支払",title:payName(p)+(p.amount?" "+yen(p.amount):""),sort:p.due+1}));
@@ -1051,8 +1051,10 @@ function shopTab(){
 
 /* ---------- こよみ(カレンダー) ---------- */
 function parseYmd(ds){const[y,m,d]=ds.split("-").map(Number);return new Date(y,m-1,d)}
+// 同じ名前・同じ日時の予定は1つだけ(祝日カレンダーが2つある等)
+function dedupe(list){const seen=new Set();return list.filter(e=>{const k=(e.title||"").trim()+"|"+(e.allDay?"D"+ymd(new Date(e.start)):e.start+"-"+e.end);if(seen.has(k))return false;seen.add(k);return true})}
 function eventsOn(ds){
-  const list=(MONTH||[]).concat(pendingEvents);
+  const list=dedupe((MONTH||[]).concat(pendingEvents));
   const day0=parseYmd(ds).getTime(),day1=day0+864e5;
   return list.filter(e=>e.start<day1&&(e.allDay?e.end>day0:(e.end>day0||e.start>=day0)))
     .filter(e=>e.allDay||e.start>=day0||e.end>day0)

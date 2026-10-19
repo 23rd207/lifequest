@@ -162,7 +162,7 @@ async function eventsForDay(offset){
   const start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), DAY_START);
   const end = new Date(start.getTime() + 24*3600e3);
   const evs = await CalendarEvent.between(new Date(day.getFullYear(), day.getMonth(), day.getDate()), end, []);
-  return evs.filter(e => !SKIP_CAL.test(e.calendar ? e.calendar.title : ""))
+  return dedupeEvents(evs).filter(e => !SKIP_CAL.test(e.calendar ? e.calendar.title : ""))
     .filter(e => e.isAllDay
       ? ymd(e.startDate) <= ds && e.endDate.getTime() > day.getTime()
       : e.endDate.getTime() > start.getTime() && e.startDate.getTime() < end.getTime())
@@ -192,6 +192,14 @@ function mapEvent(e){
     editable: e.calendar ? e.calendar.allowsContentModifications !== false && !e.calendar.isSubscribed : true };
 }
 // こよみ画面用:先月の1日〜再来月の1日まで
+// 同じ予定が複数のカレンダーに入っている(祝日カレンダーが2つある等)ときは1つにまとめる
+function dedupeEvents(evs){
+  const seen = new Set();
+  return evs.filter(e => {
+    const k = (e.title || "").trim() + "|" + (e.isAllDay ? "D" + ymd(e.startDate) : e.startDate.getTime() + "-" + e.endDate.getTime());
+    if (seen.has(k)) return false; seen.add(k); return true;
+  });
+}
 // こよみ用:最初は先月〜半年先まで。それ以外の月は、こよみで開いたときに読み込む
 const MONTH_BEFORE = 1, MONTH_AFTER = 6;
 function monthRange(){
@@ -202,7 +210,7 @@ async function monthEvents(from, to){
   try {
     const [s0, e0] = from ? [from, to] : monthRange();
     const evs = await CalendarEvent.between(s0, e0, []);
-    return evs.filter(e => !/誕生日|Birthday/i.test(e.calendar ? e.calendar.title : "")).slice(0, 3000).map(mapEvent);
+    return dedupeEvents(evs.filter(e => !/誕生日|Birthday/i.test(e.calendar ? e.calendar.title : ""))).slice(0, 3000).map(mapEvent);
   } catch(e) { return null; }
 }
 
