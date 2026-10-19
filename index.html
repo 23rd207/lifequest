@@ -144,6 +144,11 @@ button,input,select{font:inherit;color:inherit}
 }
 .row{display:flex;gap:8px;flex-wrap:wrap}
 .row>*{flex:1 1 120px;min-width:0}
+/* iPhoneの日付・時刻の入力欄は、そのままだと枠からはみ出すので幅を固定する */
+.form label{min-width:0}
+.form input[type="date"],.form input[type="time"]{-webkit-appearance:none;appearance:none;display:block;width:100%;max-width:100%;min-width:0;min-height:2.75em;text-align:left;line-height:1.4}
+.form input::-webkit-date-and-time-value{text-align:left;margin:0}
+.cal{touch-action:pan-y}
 .seg{display:flex;gap:6px;flex-wrap:wrap}
 .seg button{flex:1 1 auto;min-height:36px;padding:3px 8px;font-size:13px;background:#070a22;border:2px solid #ffffff33;border-radius:4px;cursor:pointer}
 .seg button[aria-pressed="true"]{border-color:var(--gold);color:var(--gold)}
@@ -1179,6 +1184,7 @@ app.addEventListener("click",e=>{
     paidNow.add(p.id);pushOp({type:"payDone",id:p.id});render();say([`「${payName(p)}${p.amount?" "+yen(p.amount):""}」を 済にした。`]);return}
   if(b.dataset.evedit!==undefined){const e=(MONTH||[]).find(x=>x.k===b.dataset.evedit);if(!e)return;
     ui.editEv=e.k;ui.evAllDay=!!e.allDay;ui.addEvent=false;ui.delConfirm=false;render();return}
+  if(b.dataset.day&&Date.now()-swipeJustHappened<400)return;
   if(b.dataset.day){ui.calSel=b.dataset.day;ui.addEvent=false;ui.editEv="";ui.delConfirm=false;render();return}
   if(b.dataset.calnav){const[y,m]=ui.calMonth.split("-").map(Number);const d=new Date(y,m-1+Number(b.dataset.calnav),1);
     ui.calMonth=d.getFullYear()+"-"+pad(d.getMonth()+1);ui.addEvent=false;render();return}
@@ -1229,6 +1235,28 @@ app.addEventListener("click",e=>{
     case"reset-yes":ui.confirmReset=false;state=fresh();save();tab="quest";render();askName();break;
   }
 });
+/* 開始時刻を入れたら、終了時刻を1時間後にそろえる */
+app.addEventListener("input",e=>{
+  if(e.target.id!=="ev-start")return;
+  const end=document.getElementById("ev-end");if(!end||!e.target.value)return;
+  const[h,m]=e.target.value.split(":").map(Number);
+  end.value=pad((h+1)%24)+":"+pad(m);
+});
+/* こよみを左右にスワイプして月を移動 */
+let swipe=null;
+app.addEventListener("touchstart",e=>{
+  if(!e.target.closest(".cal")||e.touches.length!==1){swipe=null;return}
+  swipe={x:e.touches[0].clientX,y:e.touches[0].clientY,t:Date.now()};
+},{passive:true});
+app.addEventListener("touchend",e=>{
+  if(!swipe)return;
+  const t=e.changedTouches[0],dx=t.clientX-swipe.x,dy=t.clientY-swipe.y;swipe=null;
+  if(Math.abs(dx)<50||Math.abs(dx)<Math.abs(dy)*1.5)return;
+  const[y,m]=ui.calMonth.split("-").map(Number);const d=new Date(y,m-1+(dx<0?1:-1),1);
+  ui.calMonth=d.getFullYear()+"-"+pad(d.getMonth()+1);ui.addEvent=false;ui.editEv="";render();
+  swipeJustHappened=Date.now();
+},{passive:true});
+let swipeJustHappened=0;
 app.addEventListener("submit",e=>{
   e.preventDefault();
   if(e.target.id==="add-form"){
