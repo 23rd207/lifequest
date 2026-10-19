@@ -196,7 +196,10 @@ function mapEvent(e){
 function dedupeEvents(evs){
   const seen = new Set();
   return evs.filter(e => {
-    const k = (e.title || "").trim() + "|" + (e.isAllDay ? "D" + ymd(e.startDate) : e.startDate.getTime() + "-" + e.endDate.getTime());
+    // 祝日カレンダー同士は、名前の書き方が違っても(「文化の日」と「Culture Day」など)同じ日なら1つに
+    const hol = /祝日|休日|Holiday/i.test(e.calendar ? e.calendar.title : "");
+    const name = (e.title || "").replace(/[\s　]+/g, "").replace(/[（(].*?[)）]/g, "");
+    const k = hol ? "HOL|" + ymd(e.startDate) : name + "|" + (e.isAllDay ? "D" + ymd(e.startDate) : e.startDate.getTime() + "-" + e.endDate.getTime());
     if (seen.has(k)) return false; seen.add(k); return true;
   });
 }

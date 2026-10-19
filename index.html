@@ -1052,7 +1052,11 @@ function shopTab(){
 /* ---------- こよみ(カレンダー) ---------- */
 function parseYmd(ds){const[y,m,d]=ds.split("-").map(Number);return new Date(y,m-1,d)}
 // 同じ名前・同じ日時の予定は1つだけ(祝日カレンダーが2つある等)
-function dedupe(list){const seen=new Set();return list.filter(e=>{const k=(e.title||"").trim()+"|"+(e.allDay?"D"+ymd(new Date(e.start)):e.start+"-"+e.end);if(seen.has(k))return false;seen.add(k);return true})}
+function dedupe(list){const seen=new Set();return list.filter(e=>{
+  const hol=/祝日|休日|Holiday/i.test(e.cal||"");
+  const name=(e.title||"").replace(/[\s　]+/g,"").replace(/[（(].*?[)）]/g,"");
+  const k=hol?"HOL|"+ymd(new Date(e.start)):name+"|"+(e.allDay?"D"+ymd(new Date(e.start)):e.start+"-"+e.end);
+  if(seen.has(k))return false;seen.add(k);return true})}
 function eventsOn(ds){
   const list=dedupe((MONTH||[]).concat(pendingEvents));
   const day0=parseYmd(ds).getTime(),day1=day0+864e5;
