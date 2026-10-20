@@ -494,7 +494,7 @@ async function buildWidget(){
     .map(c => ({ t:c.t, done: !!c.doneOn && periodKey(c.r, c.doneOn) === periodKey(c.r, t) })) : [];
 
   const w = new ListWidget();
-  w.backgroundColor = C.sky;
+  if (!String(family).startsWith("accessory")) w.backgroundColor = C.sky;
   w.setPadding(12, 14, 12, 14);
   w.url = URLScheme.forRunningScript();
   w.refreshAfterDate = new Date(now.getTime() + 10*60e3);
@@ -623,6 +623,41 @@ async function buildWidget(){
     if (soon.length) { w.addSpacer(6); sectionTitle("近々の予定"); soonLines(n); }
     else fillNext(n);
   }
+  /* ---- ロック画面ウィジェット ---- */
+  // 次の予定:今日のこのあと → なければ近々の予定
+  const nextUp = upcoming.find(e => !e.allDay && e.end > now.getTime()) || upcoming[0] || null;
+  const nextLabel = nextUp ? (nextUp.allDay ? "今日" : hm(nextUp.start)) + " " + (nextUp.title || "予定")
+    : soon.length ? dayLabel(soon[0].start) + (soon[0].allDay ? "" : " " + hm(soon[0].start)) + " " + (soon[0].title || "予定")
+    : "予定なし";
+  const nextTodo = remsLeft.length ? remsLeft[0].title : openQuests.length ? openQuests[0].t : "";
+  if (family === "accessoryInline") {
+    // 時計の上の1行
+    const t = w.addText("Lv" + L.lv + " ・ デイリー" + nDone + "/" + quests.length + " ・ " + nextLabel);
+    t.font = Font.systemFont(12); t.lineLimit = 1; t.minimumScaleFactor = 0.6;
+    return w;
+  }
+  if (family === "accessoryCircular") {
+    // 丸:デイリーの進み具合とレベル
+    w.addAccessoryWidgetBackground = true;
+    w.setPadding(0, 0, 0, 0);
+    const col = w.addStack(); col.layoutVertically(); col.centerAlignContent();
+    const top = col.addStack(); top.addSpacer(); const a1 = top.addText("Lv" + L.lv); a1.font = Font.boldSystemFont(11); top.addSpacer();
+    const mid = col.addStack(); mid.addSpacer(); const a2 = mid.addText(nDone + "/" + quests.length); a2.font = Font.boldRoundedSystemFont ? Font.boldRoundedSystemFont(18) : Font.boldSystemFont(18); mid.addSpacer();
+    const bot = col.addStack(); bot.addSpacer(); const a3 = bot.addText(nDone === quests.length ? "★" : "デイリー"); a3.font = Font.systemFont(8); bot.addSpacer();
+    return w;
+  }
+  if (family === "accessoryRectangular") {
+    // 横長:次の予定 / デイリーとレベル / 次にやること
+    w.setPadding(0, 0, 0, 0);
+    const l1 = w.addText("▶ " + nextLabel); l1.font = Font.boldSystemFont(13); l1.lineLimit = 1; l1.minimumScaleFactor = 0.7;
+    const ul = nextUp ? untilLabel(nextUp) : "";
+    const l2 = w.addText("Lv" + L.lv + " ・ デイリー " + nDone + "/" + quests.length + (ul ? " ・ " + ul : ""));
+    l2.font = Font.systemFont(11); l2.lineLimit = 1; l2.minimumScaleFactor = 0.7; l2.textOpacity = 0.8;
+    if (nextTodo) { const l3 = w.addText((remsLeft.length ? "! " : "・") + nextTodo); l3.font = Font.systemFont(11); l3.lineLimit = 1; l3.minimumScaleFactor = 0.7; l3.textOpacity = 0.8; }
+    else { const l3 = w.addText(nDone === quests.length ? "★ デイリー全部クリア！" : "このあとは ゆっくり"); l3.font = Font.systemFont(11); l3.lineLimit = 1; l3.textOpacity = 0.8; }
+    return w;
+  }
+
   if (family === "small") {
     eventsBlock(2, 14);
     if (upcoming.length === 1) fillSoonOrNext(1);
