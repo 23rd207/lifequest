@@ -220,6 +220,7 @@ async function monthEvents(from, to){
 /* ---- リマインダー(期限が2週間以内・期限切れ・今日完了したもの) ---- */
 const REM_DAYS = 14;
 const remMap = new Map();
+let remAll = null;
 let remInfo = null; // 読み込みの内訳(ゲームに表示して原因を探す用)
 async function loadReminders(){
   try {
@@ -243,12 +244,15 @@ async function loadReminders(){
     const byDue = (a, b) => (a.dueDate ? a.dueDate.getTime() : 0) - (b.dueDate ? b.dueDate.getTime() : 0);
     const all = open.sort(byDue).slice(0, 40).concat(doneToday);
     remMap.clear();
-    return all.map(r => {
+    const toObj = r => {
       remMap.set("r" + hash(String(r.identifier)).toString(36), r);
       return { id: r.identifier, title: r.title, due: r.dueDate ? r.dueDate.getTime() : null,
         hasTime: !!r.dueDateIncludesTime, overdue: !r.isCompleted && !!r.dueDate && overdue(r),
         list: r.calendar ? r.calendar.title : "", priority: r.priority || 0, completed: !!r.isCompleted };
-    });
+    };
+    // 「すべて表示」用:期限なし・2週間より先も含めた未完了ぜんぶ
+    remAll = allOpen.slice().sort((a, b) => (a.dueDate ? a.dueDate.getTime() : 9e15) - (b.dueDate ? b.dueDate.getTime() : 9e15)).slice(0, 300).map(toObj);
+    return all.map(toObj);
   } catch(e) { remInfo = { error: String(e), ver: 3 }; return null; }
 }
 
@@ -343,7 +347,7 @@ async function openGame(){
   const boot = "<script>window.__LQ_HOST__='scriptable';window.__LQ_STATE__=" + js(saved)
     + ";window.__LQ_EVENTS__=" + js(events) + ";window.__LQ_MONTH__=" + js(month)
     + ";window.__LQ_MONTHRANGE__=" + js(monthRange().map(d => d.getTime()))
-    + ";window.__LQ_REMS__=" + js(rems) + ";window.__LQ_REMLISTS__=" + js(remCals.map(c => c.title)) + ";window.__LQ_REMINFO__=" + js(remInfo) + ";window.__LQ_WISHES__=" + js(wishes)
+    + ";window.__LQ_REMS__=" + js(rems) + ";window.__LQ_REMS_ALL__=" + js(remAll) + ";window.__LQ_REMLISTS__=" + js(remCals.map(c => c.title)) + ";window.__LQ_REMINFO__=" + js(remInfo) + ";window.__LQ_WISHES__=" + js(wishes)
     + ";window.__LQ_WISHLIST__=" + js(wishCal ? wishCal.title : "") + ";window.__LQ_EVCALS__=" + js(evCals.map(c => c.title)) + ";window.__LQ_PAYS__=" + js(pays) + ";window.__LQ_PAYLISTS__=" + js(payCals.map(c => c.title)) + ";</script>";
   html = html.replace("<head>", "<head>" + boot)
     // フォントの読み込みを待たずに表示する
@@ -446,7 +450,7 @@ async function openGame(){
       try { const list = await loadWishes(); await wv.evaluateJavaScript("window.__lqSetWishes(" + js(list) + ");0", false); } catch(e) {}
     }
     if (remAdded) {
-      try { const list = await loadReminders(); await wv.evaluateJavaScript("window.__lqSetRems(" + js(list) + ");0", false); } catch(e) {}
+      try { const list = await loadReminders(); await wv.evaluateJavaScript("window.__lqSetRems(" + js(list) + "," + js(remAll) + ");0", false); } catch(e) {}
     }
     if (added) {
       try {

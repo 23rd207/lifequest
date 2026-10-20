@@ -592,7 +592,7 @@ function askName(){
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 let tab="quest";
 try{tab=sessionStorage.getItem("lq.tab")||"quest"}catch(e){}
-let ui={lastCal:"",addPay:false,editEv:"",delConfirm:false,buyConfirm:"",priceEdit:"",addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
+let ui={remAll:false,lastCal:"",addPay:false,editEv:"",delConfirm:false,buyConfirm:"",priceEdit:"",addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
 const app=document.getElementById("app");
 
 function heroHTML(now){
@@ -620,10 +620,12 @@ function heroHTML(now){
 let EVENTS = Array.isArray(window.__LQ_EVENTS__) ? window.__LQ_EVENTS__ : null;
 let MONTH = Array.isArray(window.__LQ_MONTH__) ? window.__LQ_MONTH__ : null;
 let REMS = Array.isArray(window.__LQ_REMS__) ? window.__LQ_REMS__ : null;
+let REMS_ALL = Array.isArray(window.__LQ_REMS_ALL__) ? window.__LQ_REMS_ALL__ : null;
 const REM_LISTS = Array.isArray(window.__LQ_REMLISTS__) ? window.__LQ_REMLISTS__ : [];
 let pendingRems = [];
-window.__lqSetRems = function(list){
+window.__lqSetRems = function(list, all){
   if(Array.isArray(list)) REMS = list;
+  if(Array.isArray(all)) REMS_ALL = all;
   pendingRems = pendingRems.filter(p => !(REMS||[]).some(r => r.title===p.title));
   render();
 };
@@ -670,9 +672,12 @@ function eventQuests(){
   }).sort((a,b)=>(a.allDay?0:a.start)-(b.allDay?0:b.start));
 }
 const REM_STAT = [[/勉強|学校|課題|読書|仕事|資格/,"int"],[/運動|筋トレ|健康|ジム|ラン/,"body"],[/家族|友|連絡|恋人|プレゼント/,"bond"]];
-function remQuests(){
+function remQuests(showAll){
   if(!REMS)return[];
-  return REMS.map(r=>{
+  // すべて表示:未完了ぜんぶ + 今日完了したもの。ふだんは期限2週間以内
+  let src=REMS;
+  if(showAll&&REMS_ALL){const ids=new Set(REMS_ALL.map(r=>r.id));src=REMS_ALL.concat(REMS.filter(r=>r.completed&&!ids.has(r.id)))}
+  return src.map(r=>{
     const key=(r.list||"")+" "+(r.title||"");
     const st=(REM_STAT.find(([re])=>re.test(key))||[0,"mind"])[1];
     const d=r.priority>=1&&r.priority<=4?3:r.priority>=6?1:2;
@@ -754,17 +759,27 @@ function remInfoLine(){
   return `<p class="note" style="margin:6px 0 0;color:var(--dim)">${esc(msg)}</p>`;
 }
 function remSection(now){
-  const qs=remQuests();
+  const all=!!ui.remAll&&!!REMS_ALL;
+  const qs=remQuests(all);
   const dn=qs.filter(q=>state.rems.done[q.id]).length;
   return `<section class="win" aria-labelledby="h-rem">
     <h2 class="win-title" id="h-rem"><b>リマインダー</b><span class="mono">${qs.length?dn+" / "+qs.length:""}</span></h2>
-    ${qs.length?`<ul class="qlist">${qs.map(q=>questRow(q,"rem",now)).join("")}</ul>`
+    ${REMS_ALL?`<div class="seg" style="margin-bottom:6px"><button type="button" data-remall="0" aria-pressed="${!all}">2週間以内</button><button type="button" data-remall="1" aria-pressed="${all}">すべて(${REMS_ALL.length})</button></div>`:""}
+    ${qs.length&&all?remGrouped(qs,now)
+      :qs.length?`<ul class="qlist">${qs.map(q=>questRow(q,"rem",now)).join("")}</ul>`
       :`<div class="empty">2週間以内に期限のリマインダーはありません。</div>`}
     ${remInfoLine()}
     ${pendingRems.length?`<ul class="evlist" style="margin-top:4px">${pendingRems.map(r=>`<li><span class="t mono">${r.label}</span><span>${esc(r.title)} <small style="color:var(--dim)">(追加中)</small></span></li>`).join("")}</ul>`:""}
     ${ui.addRem?remForm():`<div style="margin-top:8px"><button class="btn" id="open-rem">＋ リマインダーを追加</button></div>`}
-    <p class="note" style="margin:6px 0 0">期限が2週間以内のリマインダーと、期限切れのものが並びます。ここで達成すると、リマインダーアプリでも完了になります。</p>
+    <p class="note" style="margin:6px 0 0">${all?"未完了のリマインダーを、リストごとにすべて表示しています。":"期限が2週間以内のリマインダーと、期限切れのものが並びます。"}ここで達成すると、リマインダーアプリでも完了になります。</p>
   </section>`;
+}
+// すべて表示のとき:リストごとにまとめる(期限の近い順、期限なしは後ろ)
+function remGrouped(qs,now){
+  const groups={};
+  for(const q of qs)(groups[q.list||"リマインダー"]=groups[q.list||"リマインダー"]||[]).push(q);
+  return Object.entries(groups).map(([name,items])=>`<h3 class="win-title" style="margin:10px 0 0"><b style="font-size:15px">${esc(name)}</b><span class="mono">${items.length}件</span></h3>
+    <ul class="qlist">${items.map(q=>questRow(q,"rem",now)).join("")}</ul>`).join("");
 }
 function remForm(){
   const seg=(name,opts,val)=>`<div class="seg">${opts.map(([v,l])=>`<button type="button" data-seg="${name}" data-v="${v}" aria-pressed="${String(v)===String(val)}">${l}</button>`).join("")}</div>`;
@@ -1137,7 +1152,7 @@ function complete(kind,id){
     q=POOL.find(p=>p.id===id);if(!q||state.daily.done[id])return;
     if(questStateFor(q,new Date()).st!=="open")return;
   }else if(kind==="rem"){
-    q=remQuests().find(r=>r.id===id);if(!q||state.rems.done[id])return;
+    q=remQuests(true).find(r=>r.id===id);if(!q||state.rems.done[id])return;
   }else if(kind==="event"){
     q=eventQuests().find(e=>e.id===id);if(!q||state.events.done[id])return;
     if(!q.allDay&&Date.now()<q.start)return;
@@ -1174,7 +1189,7 @@ function undo(kind,id){
   else if(kind==="event"){q=eventQuests().find(e=>e.id===id);if(!q||!state.events.done[id])return;delete state.events.done[id];
     const m=q.days&&state.multi[q.mkey];
     if(m){m.days=m.days.filter(d=>d!==today());if(m.bonus&&m.days.length<q.days){m.bonus=false;grant(MULTI_BONUS.xp,MULTI_BONUS.g,q.s,"全日程達成:"+q.t,-1)}}}
-  else if(kind==="rem"){q=remQuests().find(r=>r.id===id);if(!q||!state.rems.done[id])return;delete state.rems.done[id];pushOp({type:"rem",id,done:false})}
+  else if(kind==="rem"){q=remQuests(true).find(r=>r.id===id);if(!q||!state.rems.done[id])return;delete state.rems.done[id];pushOp({type:"rem",id,done:false})}
   else{q=state.custom.find(c=>c.id===id);if(!q||!isDoneNow(q))return;sameDay=q.doneOn===today();q.doneOn=""}
   const D=DIFF[q.d];grant(D.xp,D.g,q.s,q.t,-1);countDone(-1,sameDay);
   if(state.week.bonus&&state.week.n<WEEK_GOAL){state.week.bonus=false;grant(WEEK_BONUS.xp,WEEK_BONUS.g,null,"ウィークリー達成",-1)}
@@ -1186,6 +1201,7 @@ app.addEventListener("click",e=>{
   const b=e.target.closest("button");if(!b)return;
   if(b.dataset.do){const[k,i]=b.dataset.do.split(":");complete(k,i);return}
   if(b.dataset.undo){const[k,i]=b.dataset.undo.split(":");undo(k,i);return}
+  if(b.dataset.remall!==undefined){ui.remAll=b.dataset.remall==="1";render();return}
   if(b.dataset.paid!==undefined){const p=(PAYS||[]).find(x=>String(x.id)===b.dataset.paid);if(!p)return;
     paidNow.add(p.id);pushOp({type:"payDone",id:p.id});render();say([`「${payName(p)}${p.amount?" "+yen(p.amount):""}」を 済にした。`]);return}
   if(b.dataset.evedit!==undefined){const e=(MONTH||[]).find(x=>x.k===b.dataset.evedit);if(!e)return;
