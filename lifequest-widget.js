@@ -623,6 +623,53 @@ async function buildWidget(){
     if (soon.length) { w.addSpacer(6); sectionTitle("近々の予定"); soonLines(n); }
     else fillNext(n);
   }
+  /* ---- 1週間の予定(ウィジェットの「Parameter」に「週」と入れたとき) ---- */
+  const param = String((typeof args !== "undefined" && args.widgetParameter) || "").trim();
+  if (/週|week/i.test(param) && !String(family).startsWith("accessory")) {
+    const gd = gameDate(now);
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      let list = [];
+      try { list = (await eventsForDay(i)).map(mapEvent); } catch(e) {}
+      days.push({ date: new Date(gd.getFullYear(), gd.getMonth(), gd.getDate() + i), list });
+    }
+    let pays = [];
+    try { pays = (await loadPays()) || []; } catch(e) {}
+    const d0 = days[0].date, d6 = days[6].date;
+    const head = w.addStack(); head.centerAlignContent();
+    text(head, "1週間の予定", 13, C.gold, true);
+    head.addSpacer();
+    text(head, (d0.getMonth()+1) + "/" + d0.getDate() + "〜" + (d6.getMonth()+1) + "/" + d6.getDate(), 11, C.dim);
+    w.addSpacer(family === "large" ? 6 : 3);
+    const perDay = family === "large" || family === "extraLarge" ? 2 : 1;
+    const showDays = family === "small" ? 4 : 7;
+    for (const [i, d] of days.slice(0, showDays).entries()) {
+      const ds = ymd(d.date);
+      const dayPays = pays.filter(p => p.due && ymd(new Date(p.due)) === ds);
+      const items = d.list.map(e => ({ time: e.allDay ? "終日" : hm(e.start), title: e.title || "予定",
+          shift: SHIFT_RE.test(e.title || "") || SHIFT_RE.test(e.cal || ""), cont: e.start < d.date.getTime() }))
+        .concat(dayPays.map(p => ({ time: "支払", title: p.title, pay: true })));
+      const row = w.addStack(); row.spacing = 6; row.topAlignContent();
+      const lab = row.addStack(); lab.size = new Size(family === "small" ? 34 : 46, 0);
+      const wd = d.date.getDay();
+      const lt = lab.addText(i === 0 ? "今日" : d.date.getDate() + " " + "日月火水木金土"[wd]);
+      lt.font = Font.boldSystemFont(family === "large" ? 13 : 12); lt.lineLimit = 1; lt.minimumScaleFactor = 0.7;
+      lt.textColor = i === 0 ? C.gold : wd === 0 ? C.danger : wd === 6 ? C.int : C.ink;
+      const col = row.addStack(); col.layoutVertically(); col.spacing = 1;
+      if (!items.length) { text(col, "—", family === "large" ? 13 : 12, C.dim); }
+      for (const it of items.slice(0, perDay)) {
+        const r = col.addStack(); r.spacing = 5; r.centerAlignContent();
+        const tm = r.addText(it.time); tm.font = Font.mediumMonospacedSystemFont(family === "large" ? 12 : 11);
+        tm.textColor = it.pay ? C.bond : it.shift ? C.gold : C.dim; tm.lineLimit = 1;
+        text(r, (it.cont ? "(続き) " : "") + it.title, family === "large" ? 13 : 12, it.cont ? C.dim : C.ink);
+      }
+      if (items.length > perDay) text(col, "ほか" + (items.length - perDay) + "件", 10, C.dim);
+      if (i < showDays - 1) w.addSpacer(family === "large" ? 4 : 2);
+    }
+    w.addSpacer();
+    return w;
+  }
+
   /* ---- ロック画面ウィジェット ---- */
   // 次の予定:今日のこのあと → なければ近々の予定
   const nextUp = upcoming.find(e => !e.allDay && e.end > now.getTime()) || upcoming[0] || null;
