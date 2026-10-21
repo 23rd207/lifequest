@@ -149,6 +149,11 @@ button,input,select{font:inherit;color:inherit}
 .form input[type="date"],.form input[type="time"]{-webkit-appearance:none;appearance:none;display:block;width:100%;max-width:100%;min-width:0;min-height:2.75em;text-align:left;line-height:1.4}
 .form input::-webkit-date-and-time-value{text-align:left;margin:0}
 .cal{touch-action:pan-y}
+.wrap{touch-action:pan-y}
+.slide-left>*{animation:slideL .22s ease-out}
+.slide-right>*{animation:slideR .22s ease-out}
+@keyframes slideL{from{transform:translateX(24px);opacity:.4}to{transform:none;opacity:1}}
+@keyframes slideR{from{transform:translateX(-24px);opacity:.4}to{transform:none;opacity:1}}
 .seg{display:flex;gap:6px;flex-wrap:wrap}
 .seg button{flex:1 1 auto;min-height:36px;padding:3px 8px;font-size:13px;background:#070a22;border:2px solid #ffffff33;border-radius:4px;cursor:pointer}
 .seg button[aria-pressed="true"]{border-color:var(--gold);color:var(--gold)}
@@ -1265,18 +1270,26 @@ app.addEventListener("input",e=>{
   end.value=pad((h+1)%24)+":"+pad(m);
 });
 /* こよみを左右にスワイプして月を移動 */
+// 横スワイプ:カレンダーの上なら月の移動、それ以外ならタブの切り替え
+const TAB_ORDER=["quest","status","cal","shop"];
 let swipe=null;
 app.addEventListener("touchstart",e=>{
-  if(!e.target.closest(".cal")||e.touches.length!==1){swipe=null;return}
-  swipe={x:e.touches[0].clientX,y:e.touches[0].clientY,t:Date.now()};
+  if(e.touches.length!==1||e.target.closest("input,select,textarea")){swipe=null;return}
+  swipe={x:e.touches[0].clientX,y:e.touches[0].clientY,t:Date.now(),onCal:!!e.target.closest(".cal")};
 },{passive:true});
 app.addEventListener("touchend",e=>{
   if(!swipe)return;
-  const t=e.changedTouches[0],dx=t.clientX-swipe.x,dy=t.clientY-swipe.y;swipe=null;
-  if(Math.abs(dx)<50||Math.abs(dx)<Math.abs(dy)*1.5)return;
-  const[y,m]=ui.calMonth.split("-").map(Number);const d=new Date(y,m-1+(dx<0?1:-1),1);
-  ui.calMonth=d.getFullYear()+"-"+pad(d.getMonth()+1);ui.addEvent=false;ui.editEv="";render();
+  const t=e.changedTouches[0],dx=t.clientX-swipe.x,dy=t.clientY-swipe.y,quick=Date.now()-swipe.t<700,onCal=swipe.onCal;swipe=null;
+  if(Math.abs(dx)<60||Math.abs(dx)<Math.abs(dy)*1.6||!quick)return;
   swipeJustHappened=Date.now();
+  if(onCal){
+    const[y,m]=ui.calMonth.split("-").map(Number);const d=new Date(y,m-1+(dx<0?1:-1),1);
+    ui.calMonth=d.getFullYear()+"-"+pad(d.getMonth()+1);ui.addEvent=false;ui.editEv="";render();
+    return;
+  }
+  const i=TAB_ORDER.indexOf(tab)+(dx<0?1:-1);
+  if(i<0||i>=TAB_ORDER.length)return;
+  switchTab(TAB_ORDER[i],dx<0?"left":"right");
 },{passive:true});
 let swipeJustHappened=0;
 app.addEventListener("submit",e=>{
@@ -1361,10 +1374,15 @@ app.addEventListener("submit",e=>{
     state.name=(document.getElementById("rename").value.trim()||"ゆうしゃ").slice(0,12);save();render();say([`なまえを「${state.name}」に変えた。`]);
   }
 });
-document.querySelector(".tabs").addEventListener("click",e=>{
-  const b=e.target.closest(".tab");if(!b)return;tab=b.dataset.tab;
+function switchTab(next,dir){
+  tab=next;
   try{sessionStorage.setItem("lq.tab",tab)}catch(err){}
-  ui.addQuest=ui.addReward=ui.confirmReset=ui.importOpen=ui.addEvent=ui.addRem=false;ui.copyBox="";render();window.scrollTo(0,0);
+  ui.addQuest=ui.addReward=ui.confirmReset=ui.importOpen=ui.addEvent=ui.addRem=false;ui.copyBox="";ui.editEv="";render();window.scrollTo(0,0);
+  if(dir){app.classList.remove("slide-left","slide-right");void app.offsetWidth;app.classList.add("slide-"+dir);
+    setTimeout(()=>app.classList.remove("slide-left","slide-right"),260)}
+}
+document.querySelector(".tabs").addEventListener("click",e=>{
+  const b=e.target.closest(".tab");if(!b)return;switchTab(b.dataset.tab);
 });
 
 /* live clock: countdown every second, full refresh each minute */
