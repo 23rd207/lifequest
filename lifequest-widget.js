@@ -653,6 +653,21 @@ async function openGame(){
         } else if (op.type === "makeWishList") {
           if (!wishCal) { wishCal = await Calendar.createForReminders(WISH_NAME); }
           wishChanged = true;
+        } else if (op.type === "editRem") {
+          const r = remMap.get(op.id);
+          if (r) {
+            r.title = String(op.title || r.title);
+            if (op.due) { r.dueDate = new Date(op.due); r.dueDateIncludesTime = !!op.hasTime; }
+            else { r.dueDate = null; r.dueDateIncludesTime = false; }
+            r.priority = op.high ? 1 : (r.priority >= 1 && r.priority <= 4 ? 0 : r.priority || 0);
+            const cal = remCals.find(c => c.title === op.list);
+            if (cal && (!r.calendar || r.calendar.title !== cal.title)) r.calendar = cal;
+            r.save();
+            remAdded = true;
+          }
+        } else if (op.type === "deleteRem") {
+          const r = remMap.get(op.id);
+          if (r) { r.remove(); remMap.delete(op.id); remAdded = true; }
         } else if (op.type === "addRem") {
           const r = new Reminder();
           r.title = String(op.title || "リマインダー");

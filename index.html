@@ -622,7 +622,7 @@ function askName(){
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 let tab="quest";
 try{tab=sessionStorage.getItem("lq.tab")||"quest"}catch(e){}
-let ui={hsOpen:false,noteOpen:"",remAll:false,lastCal:"",addPay:false,editEv:"",delConfirm:false,buyConfirm:"",priceEdit:"",addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
+let ui={editRem:"",remDel:false,hsOpen:false,noteOpen:"",remAll:false,lastCal:"",addPay:false,editEv:"",delConfirm:false,buyConfirm:"",priceEdit:"",addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
 const app=document.getElementById("app");
 
 function heroHTML(now){
@@ -713,7 +713,7 @@ function remQuests(showAll){
     const st=(REM_STAT.find(([re])=>re.test(key))||[0,"mind"])[1];
     const d=r.priority>=1&&r.priority<=4?3:r.priority>=6?1:2;
     return {id:"r"+hash(String(r.id)).toString(36),t:r.title||"(タイトルなし)",s:st,d,due:r.due,hasTime:!!r.hasTime,
-      overdue:!!r.overdue,list:r.list||"",completed:!!r.completed};
+      overdue:!!r.overdue,list:r.list||"",completed:!!r.completed,pr:r.priority||0};
   });
 }
 // 期限の表示:今日 → 時刻か「今日まで」、明日 → 「明日まで」、それ以降 → 「10/20(火)まで あと5日」
@@ -812,18 +812,23 @@ function remGrouped(qs,now){
   return Object.entries(groups).map(([name,items])=>`<h3 class="win-title" style="margin:10px 0 0"><b style="font-size:15px">${esc(name)}</b><span class="mono">${items.length}件</span></h3>
     <ul class="qlist">${items.map(q=>questRow(q,"rem",now)).join("")}</ul>`).join("");
 }
-function remForm(){
+function remForm(ed){
   const seg=(name,opts,val)=>`<div class="seg">${opts.map(([v,l])=>`<button type="button" data-seg="${name}" data-v="${v}" aria-pressed="${String(v)===String(val)}">${l}</button>`).join("")}</div>`;
-  return `<form class="form" id="rem-form">
-    <label for="rem-title">やること<input id="rem-title" maxlength="80" placeholder="例:レポートを出す" required></label>
+  const dDate=ed&&ed.due?ymd(new Date(ed.due)):today();
+  const dTime=ed&&ed.due&&ed.hasTime?hm(ed.due):"";
+  const lists=ed&&ed.list&&!REM_LISTS.includes(ed.list)?[ed.list].concat(REM_LISTS):REM_LISTS;
+  return `<form class="form" id="rem-form" ${ed?'style="margin:0;border:0;padding:4px 0"':""}>
+    <label for="rem-title">やること<input id="rem-title" maxlength="80" placeholder="例:レポートを出す" value="${ed?esc(ed.t):""}" required></label>
     <label>期限${seg("remDue",[["today","今日"],["tomorrow","明日"],["date","日付を選ぶ"],["none","なし"]],ui.remDue)}</label>
-    ${ui.remDue==="date"?`<label for="rem-date">日付<input id="rem-date" type="date" value="${today()}" required></label>`:""}
-    ${ui.remDue==="none"?"":`<label for="rem-time">時刻(入れなければ時刻なし)<input id="rem-time" type="time"></label>`}
+    ${ui.remDue==="date"?`<label for="rem-date">日付<input id="rem-date" type="date" value="${dDate}" required></label>`:""}
+    ${ui.remDue==="none"?"":`<label for="rem-time">時刻(入れなければ時刻なし)<input id="rem-time" type="time" value="${dTime}"></label>`}
     <div class="row">
-      ${REM_LISTS.length?`<label for="rem-list">リスト<select id="rem-list">${REM_LISTS.map(l=>`<option>${esc(l)}</option>`).join("")}</select></label>`:""}
+      ${lists.length?`<label for="rem-list">リスト<select id="rem-list">${lists.map(l=>`<option ${ed&&ed.list===l?"selected":""}>${esc(l)}</option>`).join("")}</select></label>`:""}
       <label>優先度${seg("remHigh",[["0","ふつう"],["1","高い"]],ui.remHigh)}</label>
     </div>
-    <div class="row"><button class="btn ghost" type="button" id="cancel-rem">やめる</button><button class="btn go" type="submit">追加する</button></div>
+    <div class="row"><button class="btn ghost" type="button" id="cancel-rem">やめる</button><button class="btn go" type="submit">${ed?"保存する":"追加する"}</button></div>
+    ${ed?(ui.remDel?`<div class="row"><button class="btn" type="button" id="del-rem-yes" style="border-color:var(--danger);color:var(--danger)">本当に削除する</button></div>`
+      :`<div class="row"><button class="btn ghost small" type="button" id="del-rem">このリマインダーを削除</button></div>`):""}
   </form>`;
 }
 // リマインダーアプリで先に完了したものを、ゲームでも受け取る
@@ -991,7 +996,9 @@ function questRow(q,kind,now){
     : kind==="obs" ? `${q.overdue&&!done?`<span class="chip expired-tag">期限切れ</span>`:q.due?`<span class="chip">${remDueLabel(q)}</span>`:q.inDaily?`<span class="chip">今日のノート</span>`:""}<span>${esc(q.file||"")}</span>`
     : kind==="rem" ? `${q.overdue&&!done?`<span class="chip expired-tag">期限切れ</span>`:`<span class="chip">${remDueLabel(q)}</span>`}${q.list?`<span>${esc(q.list)}</span>`:""}`
     : `<span class="chip">${(REPEAT[q.r]||REPEAT.daily).chip}</span>`;
-  const del = kind==="custom" ? `<button class="btn ghost small" data-del="${q.id}" aria-label="${esc(q.t)} を削除" style="margin-left:auto">削除</button>`:"";
+  if(kind==="rem"&&ui.editRem===q.id)return `<li class="q" style="display:block">${remForm(q)}</li>`;
+  const del = kind==="custom" ? `<button class="btn ghost small" data-del="${q.id}" aria-label="${esc(q.t)} を削除" style="margin-left:auto">削除</button>`
+    : kind==="rem"&&IN_WIDGET_APP&&!done ? `<button class="btn ghost small" data-remedit="${q.id}" aria-label="${esc(q.t)} を編集" style="margin-left:auto">編集</button>` : "";
   return `<li class="${cls}"><span class="cur" aria-hidden="true">▶</span><span class="q-t">${esc(q.t)}</span>${right}
     <div class="q-sub">${when}<span class="st-${q.s}">${S.n}</span><span>${D.n}</span><span class="rew">+${D.xp}EXP ${D.g}G</span>${extra}${del}</div></li>`;
 }
@@ -1430,6 +1437,8 @@ app.addEventListener("click",e=>{
   if(b.dataset.view){state.viewMode=b.dataset.view;save();render();say([b.dataset.view==="full"?"次から 全画面で開くよ。":"次から シートで開くよ。","一度閉じて、ウィジェットから開き直してね。"]);return}
   if(b.dataset.note){ui.noteOpen=ui.noteOpen===b.dataset.note?"":b.dataset.note;render();return}
   if(b.dataset.diary!==undefined){state.obsDiary=b.dataset.diary==="1";save();render();say([state.obsDiary?"冒険日記を オンにした。":"冒険日記を オフにした。"]);return}
+  if(b.dataset.remedit){const q=remQuests(true).find(r=>r.id===b.dataset.remedit);if(!q)return;
+    ui.editRem=q.id;ui.remDel=false;ui.addRem=false;ui.remDue=q.due?"date":"none";ui.remHigh=q.pr>=1&&q.pr<=4?"1":"0";render();return}
   if(b.dataset.remall!==undefined){ui.remAll=b.dataset.remall==="1";render();return}
   if(b.dataset.paid!==undefined){const p=(PAYS||[]).find(x=>String(x.id)===b.dataset.paid);if(!p)return;
     paidNow.add(p.id);pushOp({type:"payDone",id:p.id});render();say([`「${payName(p)}${p.amount?" "+yen(p.amount):""}」を 済にした。`]);return}
@@ -1440,6 +1449,7 @@ app.addEventListener("click",e=>{
   if(b.dataset.calnav){const[y,m]=ui.calMonth.split("-").map(Number);const d=new Date(y,m-1+Number(b.dataset.calnav),1);
     ui.calMonth=d.getFullYear()+"-"+pad(d.getMonth()+1);ui.addEvent=false;render();return}
   if(b.dataset.seg==="remDue"){ui.remDue=b.dataset.v;const t=document.getElementById("rem-title").value;render();document.getElementById("rem-title").value=t;return}
+  if(b.dataset.seg==="remHigh"&&ui.editRem){ui.remHigh=b.dataset.v;b.parentElement.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));return}
   if(b.dataset.seg==="evAllDay"){ui.evAllDay=b.dataset.v==="1";const t=document.getElementById("ev-title").value,d=document.getElementById("ev-date").value,ce=document.getElementById("ev-cal"),c=ce?ce.value:"";render();document.getElementById("ev-title").value=t;document.getElementById("ev-date").value=d;if(c&&document.getElementById("ev-cal"))document.getElementById("ev-cal").value=c;return}
   if(b.dataset.seg){ui[b.dataset.seg]=b.dataset.seg==="qDiff"?Number(b.dataset.v):b.dataset.v;
     b.parentElement.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));return}
@@ -1468,7 +1478,11 @@ app.addEventListener("click",e=>{
     case"toggle-hs":ui.hsOpen=!ui.hsOpen;render();break;
     case"save-diary":{const ta=document.getElementById("diary-text");if(ta)saveDiary(ta.dataset.ds,ta.value);break}
     case"open-rem":ui.addRem=true;render();document.getElementById("rem-title").focus();break;
-    case"cancel-rem":ui.addRem=false;render();break;
+    case"cancel-rem":ui.addRem=false;ui.editRem="";ui.remDel=false;render();break;
+    case"del-rem":ui.remDel=true;render();break;
+    case"del-rem-yes":{const id=ui.editRem,q=remQuests(true).find(r=>r.id===id);
+      if(q){pushOp({type:"deleteRem",id});const gone=r=>"r"+hash(String(r.id)).toString(36)===id;REMS=(REMS||[]).filter(r=>!gone(r));if(REMS_ALL)REMS_ALL=REMS_ALL.filter(r=>!gone(r));say([`リマインダー「${q.t}」を 削除した。`])}
+      ui.editRem="";ui.remDel=false;render();break}
     case"open-ev":ui.addEvent=true;ui.editEv="";ui.evAllDay=false;render();document.getElementById("ev-title").focus();break;
     case"cancel-ev":ui.addEvent=false;ui.editEv="";ui.delConfirm=false;render();break;
     case"del-ev":ui.delConfirm=true;render();break;
@@ -1561,6 +1575,13 @@ app.addEventListener("submit",e=>{
       label=(d.getMonth()+1)+"/"+d.getDate()+(hasTime?" "+hm(due):"");
     }
     const listEl=document.getElementById("rem-list");
+    if(ui.editRem){
+      const id=ui.editRem,high=ui.remHigh==="1",list=listEl?listEl.value:"";
+      pushOp({type:"editRem",id,title:title.slice(0,80),due,hasTime,list,high});
+      // 画面にはすぐ反映(Scriptable からの読み直しが届くまでのあいだ)
+      for(const arr of [REMS||[],REMS_ALL||[]])for(const r of arr)if("r"+hash(String(r.id)).toString(36)===id)Object.assign(r,{title,due,hasTime,list:list||r.list,priority:high?1:0,overdue:due!==null&&(hasTime?due<Date.now():ymd(new Date(due))<today())});
+      ui.editRem="";ui.remDel=false;render();say([`リマインダー「${title}」を 変更した。`]);return;
+    }
     pushOp({type:"addRem",title:title.slice(0,80),due,hasTime,list:listEl?listEl.value:"",high:ui.remHigh==="1"});
     const lim=parseYmd(today());lim.setDate(lim.getDate()+13);
     const showsHere=due!==null&&ymd(new Date(due))<=ymd(lim);
