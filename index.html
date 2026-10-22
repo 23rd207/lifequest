@@ -138,6 +138,10 @@ button,input,select{font:inherit;color:inherit}
 /* forms */
 .form{display:grid;gap:8px;margin-top:10px;padding-top:10px;border-top:2px dashed #ffffff22}
 .form label{font-size:12px;color:var(--dim);display:grid;gap:3px}
+.diary-box{background:#070a22;border:2px solid var(--dim);border-radius:4px;padding:10px;width:100%;min-height:7.5em;resize:vertical;
+  font-family:var(--f-body);font-size:16px;line-height:1.7;color:var(--ink);display:block}
+.diary-box:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.day .dia{font-size:9px;color:var(--c-mind);line-height:1}
 .form input,.form select{
   background:#070a22;border:2px solid var(--dim);border-radius:4px;padding:8px 10px;width:100%;min-width:0;
   font-family:var(--f-body);font-size:16px;
@@ -335,7 +339,8 @@ const SPRITES = [
 const MAX_LV = 100;
 const WEEK_GOAL = 20;
 const ALL_CLEAR = {xp:50, g:30};
-const MULTI_BONUS = {xp:30, g:15}; // 何日も続く予定を全日達成したとき
+const MULTI_BONUS = {xp:30, g:15};
+const DIARY_BONUS = {xp:10, g:5}; // その日はじめて日記を書いたとき(今日の分だけ) // 何日も続く予定を全日達成したとき
 const WEEK_BONUS = {xp:150, g:80};
 
 /* ---------- time helpers ---------- */
@@ -392,6 +397,8 @@ function fresh(){
     rems:{date:"",done:{}},
     obs:{date:"",done:{}},
     obsDiary:true,
+    diary:{},
+    diaryReward:{},
     hist:{},
     wardrobe:{owned:{},wear:""},
     multi:{},
@@ -419,6 +426,8 @@ function normalize(s){
   o.obs=Object.assign(fresh().obs,s.obs||{});
   if(!o.hist||typeof o.hist!=="object")o.hist={};
   if(!o.multi||typeof o.multi!=="object")o.multi={};
+  if(!o.diary||typeof o.diary!=="object")o.diary={};
+  if(!o.diaryReward||typeof o.diaryReward!=="object")o.diaryReward={};
   o.wardrobe=Object.assign({owned:{},wear:""},s.wardrobe||{});if(!o.wardrobe.owned||typeof o.wardrobe.owned!=="object")o.wardrobe.owned={};
   o.week=Object.assign(fresh().week,s.week||{});
   o.dayCount=Object.assign(fresh().dayCount,s.dayCount||{});
@@ -808,7 +817,13 @@ function remForm(){
 /* ---------- Obsidian ---------- */
 // Scriptable がゲームを開いたあとに、保管庫を読み込んで送ってくる
 let OBS = null;
-window.__lqSetObs = function(d){ OBS = d || {ok:false,reason:"error"}; render(); collectObsDoneElsewhere(); };
+window.__lqSetObs = function(d){
+  OBS = d || {ok:false,reason:"error"};
+  // Obsidianのデイリーノートに書いてある日記を、ゲームにまだなければ取り込む
+  if(OBS.ok&&OBS.diaryText&&OBS.diaryDs&&!diaryText(OBS.diaryDs)){state.diary[OBS.diaryDs]={text:OBS.diaryText,at:Date.now()};save()}
+  const ta=document.getElementById("diary-text");const typing=ta&&document.activeElement===ta;
+  if(!typing)render(); collectObsDoneElsewhere();
+};
 function obsQuests(){
   if(!OBS||!OBS.ok)return[];
   return OBS.tasks.map(t=>{
@@ -986,6 +1001,8 @@ function questTab(now){
     :"リマインダーの表示と追加は、ホーム画面のウィジェットをタップして開いたゲームで使えます。"}</div>${remInfoLine()}</section>`}
   ${obsSection(now)}
 
+  <section class="win" aria-label="今日の日記">${diaryEditor(today(),"今日の日記")}</section>
+
   <section class="win" aria-labelledby="h-week">
     <h2 class="win-title" id="h-week"><b>ウィークリー</b><span class="mono">${wk} / ${WEEK_GOAL}</span></h2>
     <div class="q-t" style="margin-bottom:6px">今週クエストを${WEEK_GOAL}回 達成する</div>
@@ -1138,6 +1155,31 @@ function shopTab(){
   return wardrobeSection()+wishSec;
 }
 
+/* ---------- 日記 ---------- */
+function diaryText(ds){return (state.diary[ds]&&state.diary[ds].text)||""}
+function diaryEditor(ds,title){
+  const d=state.diary[ds],dd=parseYmd(ds);
+  const label=title||((dd.getMonth()+1)+"月"+dd.getDate()+"日の日記");
+  return `<div class="diary" data-ds="${ds}">
+    <div class="win-title" style="margin:0 0 6px"><b style="font-size:15px">📖 ${esc(label)}</b><span id="diary-st">${d&&d.at?"保存済み "+hm(d.at):""}</span></div>
+    <textarea id="diary-text" class="diary-box" data-ds="${ds}" maxlength="4000" placeholder="今日あったこと、思ったこと、よかったことなど">${esc(diaryText(ds))}</textarea>
+    <div class="row" style="margin-top:6px;align-items:center"><span class="note" style="flex:3 1 auto">${ds===today()&&!state.diaryReward[ds]?`書くと +${DIARY_BONUS.xp}EXP ${DIARY_BONUS.g}G`:""}${OBS&&OBS.ok&&state.obsDiary!==false?(ds===today()&&!state.diaryReward[ds]?" ・ ":"")+"Obsidianのデイリーノートにも書き込みます":""}</span>
+      <button class="btn small go" type="button" id="save-diary" style="flex:0 0 auto">保存</button></div>
+  </div>`;
+}
+function saveDiary(ds,text,quiet){
+  const old=diaryText(ds);text=String(text).slice(0,4000);
+  if(old===text){if(!quiet)say(["日記を 保存した。"]);return}
+  state.diary[ds]={text,at:Date.now()};
+  if(!text.trim())delete state.diary[ds];
+  let lv=0;
+  if(text.trim()&&ds===today()&&!state.diaryReward[ds]){state.diaryReward[ds]=true;lv=grant(DIARY_BONUS.xp,DIARY_BONUS.g,"mind","日記を書いた")}
+  save();
+  const st=document.getElementById("diary-st");if(st)st.textContent="保存済み "+hm(Date.now());
+  if(lv){render();showLevelUp(lv)}
+  else if(!quiet)say(state.diaryReward[ds]&&old===""&&ds===today()?["日記を 書いた！",`${DIARY_BONUS.xp} の経験値と ${DIARY_BONUS.g}G を手に入れた。`]:["日記を 保存した。"]);
+}
+
 /* ---------- こよみ(カレンダー) ---------- */
 function parseYmd(ds){const[y,m,d]=ds.split("-").map(Number);return new Date(y,m-1,d)}
 // 同じ名前・同じ日時の予定は1つだけ(祝日カレンダーが2つある等)
@@ -1171,7 +1213,7 @@ function calTab(now){
     const ds=ymd(d),evs=eventsOn(ds),clr=state.hist[ds]||0,payDue=payItems().some(p=>p.due&&ymd(new Date(p.due))===ds);
     const cls=["day",d.getMonth()!==M-1?"out":"",ds===ymd(now)?"today":"",d.getDay()===0?"sun":d.getDay()===6?"sat":""].filter(Boolean).join(" ");
     cells.push(`<button class="${cls}" data-day="${ds}" aria-pressed="${ds===ui.calSel}" aria-label="${d.getMonth()+1}月${d.getDate()}日 予定${evs.length}件 達成${clr}件">
-      <span class="n mono">${d.getDate()}</span>${clr?`<span class="clr mono">★${clr}</span>`:""}
+      <span class="n mono">${d.getDate()}</span>${clr?`<span class="clr mono">★${clr}</span>`:""}${diaryText(ds)?`<span class="dia" aria-hidden="true">✎</span>`:""}
       <span class="dots">${evs.slice(0,4).map(e=>`<i class="dot ${isShift(e)?"shift":""}"></i>`).join("")}${payDue?`<i class="dot pay"></i>`:""}</span></button>`);
   }
   const sel=ui.calSel, sd=parseYmd(sel), evs=eventsOn(sel), clr=state.hist[sel]||0;
@@ -1194,6 +1236,7 @@ function calTab(now){
     ${(()=>{const ps=payItems().filter(p=>p.due&&ymd(new Date(p.due))===sel);return ps.length?`<p class="note" style="margin:6px 0 0;color:var(--c-bond)">この日の支払い:${ps.map(p=>esc(payName(p))+(p.amount?" "+yen(p.amount):"")).join("、")}</p>`:""})()}
     ${canAdd?(ui.addEvent?eventForm(sel):`<div style="margin-top:8px"><button class="btn" id="open-ev">＋ この日に予定を追加</button></div>`)
       :`<p class="note" style="margin:8px 0 0">予定の追加は、ウィジェットから開いたゲームでできます。</p>`}
+    <div class="form">${diaryEditor(sel)}</div>
   </section>${paySection()}`;
 }
 function eventForm(ds,ev){
@@ -1316,6 +1359,7 @@ app.addEventListener("click",e=>{
     case"make-wishlist":wishListCreating=true;pushOp({type:"makeWishList"});render();break;
     case"open-pay":ui.addPay=true;render();document.getElementById("pay-title").focus();break;
     case"cancel-pay":ui.addPay=false;render();break;
+    case"save-diary":{const ta=document.getElementById("diary-text");if(ta)saveDiary(ta.dataset.ds,ta.value);break}
     case"open-rem":ui.addRem=true;render();document.getElementById("rem-title").focus();break;
     case"cancel-rem":ui.addRem=false;render();break;
     case"open-ev":ui.addEvent=true;ui.editEv="";ui.evAllDay=false;render();document.getElementById("ev-title").focus();break;
@@ -1337,6 +1381,8 @@ app.addEventListener("click",e=>{
     case"reset-yes":ui.confirmReset=false;state=fresh();save();tab="quest";render();askName();break;
   }
 });
+/* 日記は入力欄から離れたときにも自動で保存 */
+app.addEventListener("focusout",e=>{if(e.target.id==="diary-text")saveDiary(e.target.dataset.ds,e.target.value,true)});
 /* 開始時刻を入れたら、終了時刻を1時間後にそろえる */
 app.addEventListener("input",e=>{
   if(e.target.id!=="ev-start")return;

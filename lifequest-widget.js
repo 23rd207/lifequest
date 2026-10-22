@@ -401,7 +401,13 @@ async function loadObsidian(){
         if (tasks.length >= 200) break;
       }
     }
-    return { ok: true, vault: root.replace(/^.*\//, ""), tasks, notes, daily: daily.rel, files: files.length, skipped };
+    let diaryText = "";
+    try {
+      const dt = await obsReadDl(daily.path);
+      const m = dt && /<!-- lifequest:diary:start -->\n?(?:## [^\n]*\n)?([\s\S]*?)\n?<!-- lifequest:diary:end -->/.exec(dt);
+      if (m) diaryText = m[1].trim();
+    } catch(e) {}
+    return { ok: true, vault: root.replace(/^.*\//, ""), tasks, notes, daily: daily.rel, files: files.length, skipped, diaryText, diaryDs: t };
   } catch(e) { return { ok: false, reason: "error", error: String(e) }; }
 }
 // タスクのチェックを付け外しする(ファイルの該当行だけ書き換える)
@@ -422,10 +428,29 @@ async function obsSetTask(id, done){
   obsWrite(path, lines.join("\n"));
 }
 // 冒険日記:今日のデイリーノートに、その日の記録を書き込む(<!-- lifequest --> で囲んだ部分だけを毎回入れ替え)
+// ゲームで書いた日記を、その日のデイリーノートの「📖 日記」欄に書き込む(前回書いたあとに変わった日だけ)
+const DIARY_SENT = FileManager.local().joinPath(FileManager.local().documentsDirectory(), "lifequest-diary-sent.json");
+async function writeDiaryEntries(root, st){
+  let sent = {}; try { sent = JSON.parse(FileManager.local().readString(DIARY_SENT)) || {}; } catch(e) {}
+  const re = /<!-- lifequest:diary:start -->[\s\S]*?<!-- lifequest:diary:end -->/;
+  for (const [ds, d] of Object.entries(st.diary || {})) {
+    if (!d || !d.at || (sent[ds] || 0) >= d.at) continue;
+    const [y, m, dd] = ds.split("-").map(Number);
+    const dn = await dailyNotePath(root, new Date(y, m - 1, dd));
+    try { const dir = dn.path.replace(/\/[^/]*$/, ""); if (!obsFm().fileExists(dir)) obsFm().createDirectory(dir, true); } catch(e) {}
+    let text = (await obsReadDl(dn.path)) || "";
+    const block = "<!-- lifequest:diary:start -->\n## 📖 日記\n" + String(d.text || "").trim() + "\n<!-- lifequest:diary:end -->";
+    text = re.test(text) ? text.replace(re, block) : (text ? text.replace(/\s*$/, "") + "\n\n" : "") + block + "\n";
+    obsWrite(dn.path, text);
+    sent[ds] = d.at;
+  }
+  try { FileManager.local().writeString(DIARY_SENT, JSON.stringify(sent)); } catch(e) {}
+}
 async function writeDiary(saveStr){
   const root = obsRoot(); if (!root || !saveStr) return;
   let st; try { st = JSON.parse(saveStr); } catch(e) { return; }
   if (st.obsDiary === false) return;
+  try { await writeDiaryEntries(root, st); } catch(e) {}
   const now = new Date(), gd = gameDate(now);
   const day0 = new Date(gd.getFullYear(), gd.getMonth(), gd.getDate(), DAY_START).getTime(), day1 = day0 + 864e5;
   const logs = (st.log || []).filter(l => l.ts >= day0 && l.ts < day1);
