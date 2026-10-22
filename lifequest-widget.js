@@ -305,6 +305,152 @@ function setPriceInNotes(notes, price){
   return PRICE_RE.test(n) ? n.replace(PRICE_RE, price + "G") : (n ? n + "\n" : "") + price + "G";
 }
 
+/* ---- Obsidian(Scriptable の設定 →「File Bookmarks」に「Obsidian」という名前で保管庫フォルダを登録) ---- */
+const OBS_BM = "Obsidian";
+const OBS_TAG = /#(quest|クエスト)(?![\w぀-ヿ一-龯])/i;
+const NOTE_TAG = /#(lifequest|ライフクエスト)(?![\w぀-ヿ一-龯])/i;
+const obsMap = new Map();
+let obsRootPath = null;
+function obsFm(){ try { return FileManager.iCloud(); } catch(e) { return FileManager.local(); } }
+function obsRoot(){
+  try { const l = FileManager.local(); if (l.bookmarkExists(OBS_BM)) return l.bookmarkedPath(OBS_BM); } catch(e) {}
+  return null;
+}
+function obsRead(path, allowDownload){
+  const f = obsFm();
+  try {
+    if (!f.fileExists(path)) return null;
+    if (f.isFileStoredIniCloud(path) && !f.isFileDownloaded(path)) return allowDownload ? "__DL__" : null;
+    return f.readString(path);
+  } catch(e) { try { return FileManager.local().readString(path); } catch(e2) { return null; } }
+}
+async function obsReadDl(path){
+  let t = obsRead(path, true);
+  if (t === "__DL__") { try { await obsFm().downloadFileFromiCloud(path); } catch(e) {} t = obsRead(path, false); }
+  return t;
+}
+function obsWrite(path, text){ obsFm().writeString(path, text); }
+function obsWalk(root){
+  const f = obsFm(), out = [], stack = [""];
+  while (stack.length && out.length < 1500) {
+    const rel = stack.pop();
+    let names = [];
+    try { names = f.listContents(rel ? f.joinPath(root, rel) : root); } catch(e) { continue; }
+    for (const n of names) {
+      if (n.startsWith(".")) continue;
+      const r = rel ? rel + "/" + n : n;
+      let dir = false; try { dir = f.isDirectory(f.joinPath(root, r)); } catch(e) {}
+      if (dir) stack.push(r); else if (/\.md$/i.test(n)) out.push(r);
+    }
+  }
+  return out;
+}
+// Obsidian のデイリーノート設定(.obsidian/daily-notes.json)を読み、日付の書式どおりのパスを作る
+function momentFmt(d, fmt){
+  const W = ["日","月","火","水","木","金","土"], WE = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  return String(fmt).replace(/\[([^\]]*)\]|YYYY|YY|MM|M|DD|D|dddd|ddd/g, (m, lit) => {
+    if (lit !== undefined) return lit;
+    return { YYYY: d.getFullYear(), YY: String(d.getFullYear()).slice(2), MM: pad(d.getMonth()+1), M: d.getMonth()+1,
+      DD: pad(d.getDate()), D: d.getDate(), dddd: WE[d.getDay()], ddd: W[d.getDay()] }[m];
+  });
+}
+async function dailyNotePath(root, date){
+  let folder = "", format = "YYYY-MM-DD";
+  try {
+    const cfg = await obsReadDl(obsFm().joinPath(root, ".obsidian/daily-notes.json"));
+    if (cfg) { const j = JSON.parse(cfg); if (j.folder) folder = String(j.folder).replace(/^\/+|\/+$/g, ""); if (j.format) format = j.format; }
+  } catch(e) {}
+  const rel = (folder ? folder + "/" : "") + momentFmt(date, format) + ".md";
+  return { rel, path: obsFm().joinPath(root, rel) };
+}
+async function loadObsidian(){
+  const root = obsRoot();
+  obsRootPath = root;
+  if (!root) return { ok: false, reason: "no-bookmark" };
+  try {
+    const now = new Date(), gd = gameDate(now), t = ymd(gd);
+    const lim = ymd(new Date(gd.getFullYear(), gd.getMonth(), gd.getDate() + REM_DAYS - 1));
+    const daily = await dailyNotePath(root, new Date(gd.getFullYear(), gd.getMonth(), gd.getDate()));
+    const files = obsWalk(root);
+    const tasks = [], notes = [];
+    obsMap.clear();
+    let skipped = 0;
+    for (const rel of files) {
+      const text = rel === daily.rel ? await obsReadDl(daily.path) : obsRead(obsFm().joinPath(root, rel), false);
+      if (text == null) { skipped++; continue; }
+      const name = rel.replace(/^.*\//, "").replace(/\.md$/i, "");
+      if (NOTE_TAG.test(text) && notes.length < 30) notes.push({ id: "n" + hash(rel).toString(36), title: name, rel, body: text.slice(0, 6000) });
+      if (!/\[[ xX]\]/.test(text)) continue;
+      const lines = text.split("\n");
+      for (const raw of lines) {
+        const m = /^(\s*[-*+]\s+)\[( |x|X)\]\s+(.*)$/.exec(raw);
+        if (!m) continue;
+        const body = m[3];
+        const due = (/📅\s*(\d{4}-\d{2}-\d{2})/.exec(body) || [])[1] || null;
+        const doneOn = (/✅\s*(\d{4}-\d{2}-\d{2})/.exec(body) || [])[1] || null;
+        const checked = m[2] !== " ";
+        const relevant = rel === daily.rel || OBS_TAG.test(body) || (due && due <= lim);
+        if (!relevant) continue;
+        if (checked && !(doneOn === t || rel === daily.rel)) continue;
+        const id = "o" + hash(rel + "|" + raw.replace(/\[[ xX]\]/, "[ ]").replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/, "")).toString(36);
+        obsMap.set(id, { rel, raw });
+        const title = body.replace(/(?:📅|✅|⏳|🛫)\s*\d{4}-\d{2}-\d{2}/g, "").replace(OBS_TAG, "").replace(/\s+/g, " ").trim();
+        tasks.push({ id, text: title || body, due, file: name, folder: rel.includes("/") ? rel.replace(/\/[^/]*$/, "") : "", completed: checked, inDaily: rel === daily.rel });
+        if (tasks.length >= 200) break;
+      }
+    }
+    return { ok: true, vault: root.replace(/^.*\//, ""), tasks, notes, daily: daily.rel, files: files.length, skipped };
+  } catch(e) { return { ok: false, reason: "error", error: String(e) }; }
+}
+// タスクのチェックを付け外しする(ファイルの該当行だけ書き換える)
+async function obsSetTask(id, done){
+  const it = obsMap.get(id); if (!it || !obsRootPath) return;
+  const path = obsFm().joinPath(obsRootPath, it.rel);
+  const text = await obsReadDl(path); if (text == null) return;
+  const lines = text.split("\n");
+  const i = lines.indexOf(it.raw); if (i < 0) return;
+  let line = lines[i];
+  if (done) {
+    line = line.replace(/\[ \]/, "[x]");
+    if (/📅/.test(line) && !/✅/.test(line)) line += " ✅ " + ymd(gameDate(new Date()));
+  } else {
+    line = line.replace(/\[[xX]\]/, "[ ]").replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/, "");
+  }
+  lines[i] = line; it.raw = line;
+  obsWrite(path, lines.join("\n"));
+}
+// 冒険日記:今日のデイリーノートに、その日の記録を書き込む(<!-- lifequest --> で囲んだ部分だけを毎回入れ替え)
+async function writeDiary(saveStr){
+  const root = obsRoot(); if (!root || !saveStr) return;
+  let st; try { st = JSON.parse(saveStr); } catch(e) { return; }
+  if (st.obsDiary === false) return;
+  const now = new Date(), gd = gameDate(now);
+  const day0 = new Date(gd.getFullYear(), gd.getMonth(), gd.getDate(), DAY_START).getTime(), day1 = day0 + 864e5;
+  const logs = (st.log || []).filter(l => l.ts >= day0 && l.ts < day1);
+  if (!logs.length) return;
+  const cnt = new Map(); let xp = 0, g = 0; const bought = [];
+  for (const l of logs.slice().reverse()) {
+    xp += l.xp || 0; g += l.g || 0;
+    if (/^(ごほうび|きせかえ)購入:/.test(l.t)) { bought.push(l.t.replace(/^.*?:/, "")); continue; }
+    const undo = /^取り消し:/.test(l.t), key = l.t.replace(/^取り消し:/, "");
+    cnt.set(key, (cnt.get(key) || 0) + (undo ? -1 : 1));
+  }
+  const doneList = [...cnt.entries()].filter(([k, n]) => n > 0).map(([k]) => k);
+  const L = levelInfo(st.xp || 0);
+  const block = ["<!-- lifequest:start -->", "## ⚔️ ライフクエスト",
+    "- " + titleFor(L.lv) + " Lv" + L.lv + " ・ 連続" + (st.streak || 0) + "日 ・ 所持金 " + (st.gold || 0) + "G",
+    "- 今日の達成 " + doneList.length + "件(+" + Math.max(0, xp) + "EXP / " + (g >= 0 ? "+" : "") + g + "G)"]
+    .concat(doneList.map(t => "  - " + t))
+    .concat(bought.length ? ["- 買ったもの:" + bought.join("、")] : [])
+    .concat(["<!-- lifequest:end -->"]).join("\n");
+  const dn = await dailyNotePath(root, new Date(gd.getFullYear(), gd.getMonth(), gd.getDate()));
+  try { const dir = dn.path.replace(/\/[^/]*$/, ""); if (!obsFm().fileExists(dir)) obsFm().createDirectory(dir, true); } catch(e) {}
+  let text = (await obsReadDl(dn.path)) || "";
+  const re = /<!-- lifequest:start -->[\s\S]*?<!-- lifequest:end -->/;
+  text = re.test(text) ? text.replace(re, block) : (text ? text.replace(/\s*$/, "") + "\n\n" : "") + block + "\n";
+  obsWrite(dn.path, text);
+}
+
 /* ---- ゲームを開く ---- */
 const wait = ms => new Promise(r => Timer.schedule(ms, false, r));
 async function fetchGame(timeout){
@@ -411,6 +557,8 @@ async function openGame(){
           if (cal) r.calendar = cal;
           r.save();
           remAdded = true;
+        } else if (op.type === "obsTask") {
+          await obsSetTask(op.id, !!op.done);
         } else if (op.type === "loadMonth") {
           // こよみで範囲外の月を開いたとき:その月の予定を読み込んで渡す
           const [y, m] = String(op.ym).split("-").map(Number);
@@ -459,9 +607,19 @@ async function openGame(){
       } catch(e) {}
     }
   }
+  // Obsidian は開いたあとに裏で読み込んで渡す(起動を遅くしないため)
+  (async () => {
+    const data = await loadObsidian();
+    for (let i = 0; i < 20 && open; i++) {
+      try { const ready = await wv.evaluateJavaScript("typeof window.__lqSetObs === 'function'", false); if (ready) break; } catch(e) {}
+      await wait(250);
+    }
+    try { await wv.evaluateJavaScript("window.__lqSetObs(" + js(data) + ");0", false); } catch(e) {}
+  })();
   while (open) { await wait(1000); await drain(); }
   await shown;
   await drain();
+  try { await writeDiary(loadSave()); } catch(e) {}
 }
 
 /* ---- ウィジェット ---- */

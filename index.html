@@ -390,6 +390,8 @@ function fresh(){
     daily:{date:"",ids:[],done:{},bonus:false},
     events:{date:"",done:{}},
     rems:{date:"",done:{}},
+    obs:{date:"",done:{}},
+    obsDiary:true,
     hist:{},
     wardrobe:{owned:{},wear:""},
     multi:{},
@@ -414,6 +416,7 @@ function normalize(s){
   o.daily=Object.assign(fresh().daily,s.daily||{});
   o.events=Object.assign(fresh().events,s.events||{});
   o.rems=Object.assign(fresh().rems,s.rems||{});
+  o.obs=Object.assign(fresh().obs,s.obs||{});
   if(!o.hist||typeof o.hist!=="object")o.hist={};
   if(!o.multi||typeof o.multi!=="object")o.multi={};
   o.wardrobe=Object.assign({owned:{},wear:""},s.wardrobe||{});if(!o.wardrobe.owned||typeof o.wardrobe.owned!=="object")o.wardrobe.owned={};
@@ -486,6 +489,7 @@ function rollover(now=new Date()){
   const t=today(now);let changed=false;
   if(state.daily.date!==t){state.daily={date:t,ids:dailyFor(t),done:{},bonus:false};changed=true}
   if(state.events.date!==t){state.events={date:t,done:{}};changed=true}
+  if(state.obs.date!==t){state.obs={date:t,done:{}};changed=true}
   if(state.rems.date!==t){state.rems={date:t,done:{}};changed=true;
     for(const k in state.multi){if((state.multi[k].end||0)<Date.now()-30*864e5)delete state.multi[k]}}
   if(state.dayCount.date!==t){state.dayCount={date:t,n:0};changed=true}
@@ -597,7 +601,7 @@ function askName(){
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 let tab="quest";
 try{tab=sessionStorage.getItem("lq.tab")||"quest"}catch(e){}
-let ui={remAll:false,lastCal:"",addPay:false,editEv:"",delConfirm:false,buyConfirm:"",priceEdit:"",addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
+let ui={noteOpen:"",remAll:false,lastCal:"",addPay:false,editEv:"",delConfirm:false,buyConfirm:"",priceEdit:"",addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
 const app=document.getElementById("app");
 
 function heroHTML(now){
@@ -801,6 +805,68 @@ function remForm(){
   </form>`;
 }
 // リマインダーアプリで先に完了したものを、ゲームでも受け取る
+/* ---------- Obsidian ---------- */
+// Scriptable がゲームを開いたあとに、保管庫を読み込んで送ってくる
+let OBS = null;
+window.__lqSetObs = function(d){ OBS = d || {ok:false,reason:"error"}; render(); collectObsDoneElsewhere(); };
+function obsQuests(){
+  if(!OBS||!OBS.ok)return[];
+  return OBS.tasks.map(t=>{
+    const key=(t.folder||"")+" "+(t.file||"")+" "+(t.text||"");
+    const st=(REM_STAT.find(([re])=>re.test(key))||[0,"mind"])[1];
+    const due=t.due?parseYmd(t.due).getTime():null;
+    return {id:t.id,t:t.text,s:st,d:2,due,hasTime:false,overdue:!!t.due&&t.due<today()&&!t.completed,file:t.file,completed:!!t.completed,inDaily:t.inDaily};
+  }).sort((a,b)=>(a.due||9e15)-(b.due||9e15));
+}
+function obsSection(now){
+  if(!IN_WIDGET_APP)return"";
+  if(OBS===null)return`<section class="win"><h2 class="win-title"><b>Obsidianのタスク</b><span>読み込み中…</span></h2></section>`;
+  if(!OBS.ok)return"";
+  const qs=obsQuests(),dn=qs.filter(q=>state.obs.done[q.id]).length;
+  return `<section class="win" aria-labelledby="h-obs">
+    <h2 class="win-title" id="h-obs"><b>Obsidianのタスク</b><span class="mono">${qs.length?dn+" / "+qs.length:""}</span></h2>
+    ${qs.length?`<ul class="qlist">${qs.map(q=>questRow(q,"obs",now)).join("")}</ul>`:`<div class="empty">対象のタスクはありません。</div>`}
+    <p class="note" style="margin:6px 0 0">今日のデイリーノートのタスク、「#quest」を付けたタスク、📅の期限が2週間以内のタスクが並びます。達成すると、Obsidianのメモにもチェックが付きます。</p>
+  </section>`;
+}
+function collectObsDoneElsewhere(){
+  const got=obsQuests().filter(q=>q.completed&&!state.obs.done[q.id]);
+  if(!got.length||!state.name)return;
+  let lv=0,xp=0,g=0;
+  for(const q of got){const D=DIFF[q.d];lv=grant(D.xp,D.g,q.s,q.t)||lv;state.obs.done[q.id]=true;countDone(1);xp+=D.xp;g+=D.g}
+  save();render();
+  if(lv)showLevelUp(lv);else say([`Obsidianで完了した ${got.length}件を 受け取った！`,`${xp} の経験値と ${g}G を手に入れた。`]);
+}
+// メモ(#lifequest を付けたノート)をかんたんに表示する
+function mdLite(src){
+  const body=String(src).replace(/^---\n[\s\S]*?\n---\n?/,"");
+  return body.split("\n").slice(0,200).map(line=>{
+    let h=esc(line).replace(/\*\*(.+?)\*\*/g,"<b>$1</b>").replace(/\[\[([^\]|]+)(\|([^\]]+))?\]\]/g,(m,a,b,c)=>`<u>${c||a}</u>`).replace(/#(lifequest|ライフクエスト)/gi,"");
+    let m;
+    if((m=/^(#{1,6})\s+(.*)$/.exec(h)))return `<div style="font-size:${m[1].length<=2?16:14}px;color:var(--gold);margin-top:6px">${m[2]}</div>`;
+    if((m=/^\s*[-*+]\s+\[( |x|X)\]\s+(.*)$/.exec(h)))return `<div>${m[1]===" "?"☐":"☑"} ${m[2]}</div>`;
+    if((m=/^(\s*)[-*+]\s+(.*)$/.exec(h)))return `<div style="padding-left:${Math.min(4,m[1].length/2)*12}px">・${m[2]}</div>`;
+    return h.trim()?`<div>${h}</div>`:`<div style="height:6px"></div>`;
+  }).join("");
+}
+function obsStatusSection(){
+  if(!IN_WIDGET_APP)return`<section class="win"><h2 class="win-title"><b>Obsidian</b></h2><p class="note" style="margin:0">Obsidianとの連携は、ウィジェットから開いたゲームで使えます。</p></section>`;
+  if(OBS===null)return`<section class="win"><h2 class="win-title"><b>Obsidian</b><span>読み込み中…</span></h2></section>`;
+  if(!OBS.ok)return`<section class="win" aria-labelledby="h-obs2"><h2 class="win-title" id="h-obs2"><b>Obsidianとつなぐ</b></h2>
+    <p class="note" style="margin:0">${OBS.reason==="no-bookmark"?"Scriptableに、Obsidianの保管庫フォルダを登録すると使えます。":"保管庫を読めませんでした:"+esc(OBS.error||"")}</p>
+    <ol class="note" style="margin:6px 0 0;padding-left:1.4em"><li>Scriptableのアプリで、左上の歯車(設定)→「File Bookmarks」を開く</li><li>「＋」→「Pick Folder」で、Obsidianの保管庫フォルダを選ぶ</li><li>名前を「<b>Obsidian</b>」にして保存し、もう一度ウィジェットから開く</li></ol>
+  </section>`;
+  const notes=OBS.notes||[];
+  return `<section class="win" aria-labelledby="h-obs2">
+    <h2 class="win-title" id="h-obs2"><b>Obsidian</b><span>${esc(OBS.vault||"")}</span></h2>
+    <div class="row" style="align-items:center"><span style="flex:3 1 auto">冒険日記をデイリーノートに書く</span>
+      <div class="seg" style="flex:0 0 auto"><button type="button" data-diary="1" aria-pressed="${state.obsDiary!==false}">オン</button><button type="button" data-diary="0" aria-pressed="${state.obsDiary===false}">オフ</button></div></div>
+    <p class="note" style="margin:4px 0 10px">ゲームを閉じたときに、今日のデイリーノート(${esc(OBS.daily||"")})へ、達成したクエストやレベルを書き込みます。書き込むのは「ライフクエスト」の欄だけで、ほかの部分は変えません。</p>
+    <h3 class="win-title" style="margin:0"><b style="font-size:15px">メモ</b><span>「#lifequest」を付けたノート</span></h3>
+    ${notes.length?`<ul class="evlist">${notes.map(n=>`<li class="evli"><button class="evbtn" data-note="${n.id}" style="grid-template-columns:1fr auto"><span>${esc(n.title)}</span><span class="t">${ui.noteOpen===n.id?"▲":"▼"}</span></button>${ui.noteOpen===n.id?`<div style="padding:4px 2px 10px;font-family:var(--f-body);font-size:13px;line-height:1.6;overflow-wrap:anywhere">${mdLite(n.body)}</div>`:""}</li>`).join("")}</ul>`
+      :`<div class="empty">ノートに「#lifequest」と書くと、ここに表示されます。</div>`}
+  </section>`;
+}
 function collectRemsDoneElsewhere(){
   const got=remQuests().filter(q=>q.completed&&!state.rems.done[q.id]);
   if(!got.length)return;
@@ -872,7 +938,7 @@ function questStateFor(q,now){
 function questRow(q,kind,now){
   const D=DIFF[q.d], S=STATS[q.s];
   let right, cls="q", extra="";
-  const done = kind==="daily" ? !!state.daily.done[q.id] : kind==="event" ? !!state.events.done[q.id] : kind==="rem" ? !!state.rems.done[q.id] : isDoneNow(q);
+  const done = kind==="daily" ? !!state.daily.done[q.id] : kind==="event" ? !!state.events.done[q.id] : kind==="rem" ? !!state.rems.done[q.id] : kind==="obs" ? !!state.obs.done[q.id] : isDoneNow(q);
   if(done){
     cls+=" done";
     right=`<button class="stamp" data-undo="${kind}:${q.id}" aria-label="${esc(q.t)} の達成を取り消す">CLEAR</button>`;
@@ -881,8 +947,8 @@ function questRow(q,kind,now){
     if(s.st==="locked"){cls+=" locked";right=`<div class="wait">受注まで<br><span class="mono">${s.wait}</span></div>`}
     else if(s.st==="expired"){cls+=" expired";right=`<span class="expired-tag">期限切れ</span>`}
     else{right=`<button class="btn go" data-do="daily:${q.id}">達成</button>`;if(s.left)extra=`<span>のこり ${s.left}</span>`}
-  }else if(kind==="rem"){
-    right=`<button class="btn go" data-do="rem:${q.id}">達成</button>`;
+  }else if(kind==="rem"||kind==="obs"){
+    right=`<button class="btn go" data-do="${kind}:${q.id}">達成</button>`;
   }else if(kind==="event"){
     if(!q.allDay&&now.getTime()<q.start){cls+=" locked";right=`<div class="wait">開始まで<br><span class="mono">${fmtHM(q.start-now.getTime())}</span></div>`}
     else right=`<button class="btn go" data-do="event:${q.id}">達成</button>`;
@@ -891,6 +957,7 @@ function questRow(q,kind,now){
   }
   const when = kind==="daily" ? `<span class="chip">${q.to?WINDOWS[q.w].n.replace(/〜.*$/,"〜"+(q.to>=24?q.to-24:q.to)+"時"):WINDOWS[q.w].n}</span>`
     : kind==="event" ? `<span class="chip">${multiDay(q)?(q.allDay?"終日 ":hm(q.start)+" ")+multiTxt(q,today()):(q.allDay?"終日":hm(q.start)+"〜"+hm(q.end))}</span>${q.shift?`<span class="chip rew">シフト</span>`:""}${q.days?`<span class="chip">達成 ${((state.multi[q.mkey]||{}).days||[]).length}/${q.days}日</span>`:""}`
+    : kind==="obs" ? `${q.overdue&&!done?`<span class="chip expired-tag">期限切れ</span>`:q.due?`<span class="chip">${remDueLabel(q)}</span>`:q.inDaily?`<span class="chip">今日のノート</span>`:""}<span>${esc(q.file||"")}</span>`
     : kind==="rem" ? `${q.overdue&&!done?`<span class="chip expired-tag">期限切れ</span>`:`<span class="chip">${remDueLabel(q)}</span>`}${q.list?`<span>${esc(q.list)}</span>`:""}`
     : `<span class="chip">${(REPEAT[q.r]||REPEAT.daily).chip}</span>`;
   const del = kind==="custom" ? `<button class="btn ghost small" data-del="${q.id}" aria-label="${esc(q.t)} を削除" style="margin-left:auto">削除</button>`:"";
@@ -917,6 +984,7 @@ function questTab(now){
   ${REMS?remSection(now):`<section class="win"><h2 class="win-title"><b>リマインダー</b></h2><div class="empty">${IN_WIDGET_APP
     ?"リマインダーを読めませんでした。iPhoneの「設定」→「Scriptable」→「リマインダー」をオンにして、もう一度ウィジェットから開いてください。"
     :"リマインダーの表示と追加は、ホーム画面のウィジェットをタップして開いたゲームで使えます。"}</div>${remInfoLine()}</section>`}
+  ${obsSection(now)}
 
   <section class="win" aria-labelledby="h-week">
     <h2 class="win-title" id="h-week"><b>ウィークリー</b><span class="mono">${wk} / ${WEEK_GOAL}</span></h2>
@@ -958,6 +1026,7 @@ function statusTab(){
     </div>
     <p class="note" style="margin:8px 0 0">1日にクエストを3つ以上達成すると、連続日数がのびます。</p>
   </section>
+  ${obsStatusSection()}
   <section class="win" aria-labelledby="h-rank">
     <h2 class="win-title" id="h-rank"><b>階級の道</b><span class="mono">Lv上限 ${MAX_LV}</span></h2>
     <ul class="ranks">${TITLES.map(([lv,n],i)=>{const got=L.lv>=lv,now=rankIndex(L.lv)===i;
@@ -1156,6 +1225,8 @@ function complete(kind,id){
   if(kind==="daily"){
     q=POOL.find(p=>p.id===id);if(!q||state.daily.done[id])return;
     if(questStateFor(q,new Date()).st!=="open")return;
+  }else if(kind==="obs"){
+    q=obsQuests().find(r=>r.id===id);if(!q||state.obs.done[id])return;
   }else if(kind==="rem"){
     q=remQuests(true).find(r=>r.id===id);if(!q||state.rems.done[id])return;
   }else if(kind==="event"){
@@ -1174,7 +1245,8 @@ function complete(kind,id){
       if(!m.bonus&&m.days.length>=q.days){m.bonus=true;lv=grant(MULTI_BONUS.xp,MULTI_BONUS.g,q.s,"全日程達成:"+q.t)||lv;
         lines.push(`「${q.t}」全${q.days}日 達成！ ボーナス ${MULTI_BONUS.xp}EXP！`)}
       else lines.push(`全${q.days}日のうち ${m.days.length}日ぶん クリア。`)}}
-  else if(kind==="rem"){state.rems.done[id]=true;pushOp({type:"rem",id,done:true})}else q.doneOn=today();
+  else if(kind==="rem"){state.rems.done[id]=true;pushOp({type:"rem",id,done:true})}
+  else if(kind==="obs"){state.obs.done[id]=true;pushOp({type:"obsTask",id,done:true})}else q.doneOn=today();
   if(countDone(1))lines.push(`連続 ${state.streak}日目！ よくがんばった。`);
   if(kind==="daily"&&!state.daily.bonus&&state.daily.ids.every(i=>state.daily.done[i])){
     state.daily.bonus=true;lv=grant(ALL_CLEAR.xp,ALL_CLEAR.g,null,"デイリー オールクリア")||lv;
@@ -1195,6 +1267,7 @@ function undo(kind,id){
     const m=q.days&&state.multi[q.mkey];
     if(m){m.days=m.days.filter(d=>d!==today());if(m.bonus&&m.days.length<q.days){m.bonus=false;grant(MULTI_BONUS.xp,MULTI_BONUS.g,q.s,"全日程達成:"+q.t,-1)}}}
   else if(kind==="rem"){q=remQuests(true).find(r=>r.id===id);if(!q||!state.rems.done[id])return;delete state.rems.done[id];pushOp({type:"rem",id,done:false})}
+  else if(kind==="obs"){q=obsQuests().find(r=>r.id===id);if(!q||!state.obs.done[id])return;delete state.obs.done[id];pushOp({type:"obsTask",id,done:false})}
   else{q=state.custom.find(c=>c.id===id);if(!q||!isDoneNow(q))return;sameDay=q.doneOn===today();q.doneOn=""}
   const D=DIFF[q.d];grant(D.xp,D.g,q.s,q.t,-1);countDone(-1,sameDay);
   if(state.week.bonus&&state.week.n<WEEK_GOAL){state.week.bonus=false;grant(WEEK_BONUS.xp,WEEK_BONUS.g,null,"ウィークリー達成",-1)}
@@ -1206,6 +1279,8 @@ app.addEventListener("click",e=>{
   const b=e.target.closest("button");if(!b)return;
   if(b.dataset.do){const[k,i]=b.dataset.do.split(":");complete(k,i);return}
   if(b.dataset.undo){const[k,i]=b.dataset.undo.split(":");undo(k,i);return}
+  if(b.dataset.note){ui.noteOpen=ui.noteOpen===b.dataset.note?"":b.dataset.note;render();return}
+  if(b.dataset.diary!==undefined){state.obsDiary=b.dataset.diary==="1";save();render();say([state.obsDiary?"冒険日記を オンにした。":"冒険日記を オフにした。"]);return}
   if(b.dataset.remall!==undefined){ui.remAll=b.dataset.remall==="1";render();return}
   if(b.dataset.paid!==undefined){const p=(PAYS||[]).find(x=>String(x.id)===b.dataset.paid);if(!p)return;
     paidNow.add(p.id);pushOp({type:"payDone",id:p.id});render();say([`「${payName(p)}${p.amount?" "+yen(p.amount):""}」を 済にした。`]);return}
