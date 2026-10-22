@@ -450,8 +450,13 @@ let state;
 try{state=normalize(JSON.parse(localStorage.getItem(KEY)||"null"))}catch(e){state=fresh()}
 // Scriptable のウィジェットから開いたとき、ウィジェット側のセーブデータを受け取る
 const IN_WIDGET_APP = typeof window.__LQ_HOST__==="string";
-if(typeof window.__LQ_STATE__==="string"){
-  try{const h=normalize(JSON.parse(window.__LQ_STATE__));if((h.editedAt||0)>=(state.editedAt||0))state=h}catch(e){}
+if(IN_WIDGET_APP){
+  let hostNewer=false;
+  if(typeof window.__LQ_STATE__==="string"){
+    try{const h=normalize(JSON.parse(window.__LQ_STATE__));if((h.editedAt||0)>=(state.editedAt||0)){state=h;hostNewer=true}}catch(e){}
+  }
+  // 前回、閉じる直前の変更(名前の変更など)がウィジェット側に届いていなかったときは、ここで送り直す
+  if(!hostNewer&&state.name){try{window.__lqPending=JSON.stringify(state)}catch(e){}}
 }
 
 let saveTimer=null, lastSaved=0, saveFailed=false;
