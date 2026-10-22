@@ -331,8 +331,8 @@ async function obsReadDl(path){
 }
 function obsWrite(path, text){ obsFm().writeString(path, text); }
 function obsWalk(root){
-  const f = obsFm(), out = [], stack = [""];
-  while (stack.length && out.length < 1500) {
+  const f = obsFm(), out = [], stack = [""], t0 = Date.now();
+  while (stack.length && out.length < 1500 && Date.now() - t0 < 3000) {
     const rel = stack.pop();
     let names = [];
     try { names = f.listContents(rel ? f.joinPath(root, rel) : root); } catch(e) { continue; }
@@ -375,7 +375,9 @@ async function loadObsidian(){
     const tasks = [], notes = [];
     obsMap.clear();
     let skipped = 0;
+    const t0 = Date.now();
     for (const rel of files) {
+      if (Date.now() - t0 > 4000 && rel !== daily.rel) { skipped++; continue; }
       const text = rel === daily.rel ? await obsReadDl(daily.path) : obsRead(obsFm().joinPath(root, rel), false);
       if (text == null) { skipped++; continue; }
       const name = rel.replace(/^.*\//, "").replace(/\.md$/i, "");
@@ -607,16 +609,23 @@ async function openGame(){
       } catch(e) {}
     }
   }
-  // Obsidian は開いたあとに裏で読み込んで渡す(起動を遅くしないため)
-  (async () => {
-    const data = await loadObsidian();
-    for (let i = 0; i < 20 && open; i++) {
-      try { const ready = await wv.evaluateJavaScript("typeof window.__lqSetObs === 'function'", false); if (ready) break; } catch(e) {}
-      await wait(250);
+  // Obsidian は、ゲームが表示されてから読み込んで渡す。
+  // ゲームとのやりとりは1つずつ順番に行う(同時に呼ぶと Scriptable が固まることがあるため)
+  let obsData = null, obsSent = false, obsTried = false;
+  while (open) {
+    await wait(1000);
+    await drain();
+    if (!obsTried && open) {
+      obsTried = true;
+      try { obsData = await loadObsidian(); } catch(e) { obsData = { ok: false, reason: "error", error: String(e) }; }
     }
-    try { await wv.evaluateJavaScript("window.__lqSetObs(" + js(data) + ");0", false); } catch(e) {}
-  })();
-  while (open) { await wait(1000); await drain(); }
+    if (obsData && !obsSent && open) {
+      try {
+        const ready = await wv.evaluateJavaScript("typeof window.__lqSetObs === 'function'", false);
+        if (ready) { await wv.evaluateJavaScript("window.__lqSetObs(" + js(obsData) + ");0", false); obsSent = true; }
+      } catch(e) { obsSent = true; }
+    }
+  }
   await shown;
   await drain();
   try { await writeDiary(loadSave()); } catch(e) {}
