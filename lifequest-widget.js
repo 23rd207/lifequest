@@ -529,7 +529,10 @@ async function openGame(){
   const wv = new WebView();
   let open = true;
   wv.loadHTML(html, GAME_URL);
-  const shown = wv.present(false).then(() => { open = false; }, () => { open = false; });
+  // 表示のしかた:ゲームの設定(ステータス →「画面の開き方」)で選ぶ。全画面 or 下から出るシート
+  let fullscreen = false;
+  try { fullscreen = (JSON.parse(saved || "null") || {}).viewMode === "full"; } catch(e) {}
+  const shown = wv.present(fullscreen).then(() => { open = false; }, () => { open = false; });
   // 取れなかったときは、次回のために裏で取っておく
   if (!fresh) fetchGame(10);
   // 1秒ごとに、ゲームのセーブと頼まれた操作を受け取る

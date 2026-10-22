@@ -399,6 +399,7 @@ function fresh(){
     obsDiary:true,
     diary:{},
     diaryReward:{},
+    viewMode:"sheet",
     hist:{},
     wardrobe:{owned:{},wear:""},
     multi:{},
@@ -1067,6 +1068,11 @@ function statusTab(){
         <div class="row"><button class="btn ghost" type="button" id="bk-cancel">やめる</button><button class="btn go" type="submit">復元する</button></div></form>`:""}
     </div>
   </section>
+  ${IN_WIDGET_APP?`<section class="win" aria-labelledby="h-view">
+    <h2 class="win-title" id="h-view"><b>画面の開き方</b></h2>
+    <div class="seg"><button type="button" data-view="sheet" aria-pressed="${state.viewMode!=="full"}">シート(下から出る)</button><button type="button" data-view="full" aria-pressed="${state.viewMode==="full"}">全画面</button></div>
+    <p class="note" style="margin:6px 0 0">次にウィジェットから開いたときから切り替わります。全画面のときは、左上の「Close」で閉じます。シートのときは、下にスワイプしても閉じられます。</p>
+  </section>`:""}
   <section class="win" aria-labelledby="h-set">
     <h2 class="win-title" id="h-set"><b>せってい</b><span>${saveLabel()}</span></h2>
     <form class="form" id="rename-form" style="border:0;margin:0;padding:0">
@@ -1322,6 +1328,7 @@ app.addEventListener("click",e=>{
   const b=e.target.closest("button");if(!b)return;
   if(b.dataset.do){const[k,i]=b.dataset.do.split(":");complete(k,i);return}
   if(b.dataset.undo){const[k,i]=b.dataset.undo.split(":");undo(k,i);return}
+  if(b.dataset.view){state.viewMode=b.dataset.view;save();render();say([b.dataset.view==="full"?"次から 全画面で開くよ。":"次から シートで開くよ。","一度閉じて、ウィジェットから開き直してね。"]);return}
   if(b.dataset.note){ui.noteOpen=ui.noteOpen===b.dataset.note?"":b.dataset.note;render();return}
   if(b.dataset.diary!==undefined){state.obsDiary=b.dataset.diary==="1";save();render();say([state.obsDiary?"冒険日記を オンにした。":"冒険日記を オフにした。"]);return}
   if(b.dataset.remall!==undefined){ui.remAll=b.dataset.remall==="1";render();return}
