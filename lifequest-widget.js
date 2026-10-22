@@ -305,6 +305,78 @@ function setPriceInNotes(notes, price){
   return PRICE_RE.test(n) ? n.replace(PRICE_RE, price + "G") : (n ? n + "\n" : "") + price + "G";
 }
 
+/* ---- 天気(現在地 + Open-Meteo。キーなしで使える無料の天気API) ---- */
+const WX_FILE = fm.joinPath(dir, "lifequest-weather.json");
+async function getWeather(maxAgeMin){
+  let cache = null; try { cache = JSON.parse(fm.readString(WX_FILE)); } catch(e) {}
+  if (cache && cache.data && Date.now() - cache.at < maxAgeMin * 60e3) return cache.data;
+  try {
+    let loc = cache && cache.loc && Date.now() - (cache.loc.at || 0) < 6 * 3600e3 ? cache.loc : null;
+    if (!loc) {
+      try {
+        Location.setAccuracyToThreeKilometers();
+        const l = await Location.current();
+        loc = { lat: l.latitude, lon: l.longitude, at: Date.now(), place: "" };
+        try { const g = await Location.reverseGeocode(l.latitude, l.longitude, "ja_JP"); const a = g && g[0]; if (a) loc.place = a.locality || a.subAdministrativeArea || a.administrativeArea || ""; } catch(e) {}
+      } catch(e) { loc = cache && cache.loc ? cache.loc : null; }
+    }
+    if (!loc) return cache ? cache.data : null;
+    const url = "https://api.open-meteo.com/v1/forecast?latitude=" + loc.lat.toFixed(3) + "&longitude=" + loc.lon.toFixed(3)
+      + "&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=3";
+    const r = new Request(url); r.timeoutInterval = 6;
+    const j = await r.loadJSON();
+    const data = { place: loc.place || "", at: Date.now(),
+      now: { t: j.current.temperature_2m, code: j.current.weather_code },
+      days: j.daily.time.map((d, i) => ({ date: d, code: j.daily.weather_code[i], max: j.daily.temperature_2m_max[i],
+        min: j.daily.temperature_2m_min[i], pop: j.daily.precipitation_probability_max[i] })) };
+    fm.writeString(WX_FILE, JSON.stringify({ at: Date.now(), data, loc }));
+    return data;
+  } catch(e) { return cache ? cache.data : null; }
+}
+function wxIcon(code){
+  if (code === 0) return "☀️"; if (code <= 2) return "🌤"; if (code === 3) return "☁️"; if (code <= 48) return "🌫";
+  if (code <= 57) return "🌦"; if (code <= 67) return "🌧"; if (code <= 77) return "❄️"; if (code <= 82) return "🌦"; if (code <= 86) return "🌨"; return "⛈";
+}
+
+/* ---- ヘルスケア(ショートカットの「スクリプトを実行」から歩数・睡眠を受け取る) ---- */
+const HEALTH_FILE = fm.joinPath(dir, "lifequest-health.json");
+function loadHealth(){ try { return JSON.parse(fm.readString(HEALTH_FILE)) || {}; } catch(e) { return {}; } }
+function parseHealthInput(p){
+  const num = v => { const n = Number(String(v).replace(/[,，\s]/g, "").replace(/[０-９．]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))); return isFinite(n) ? n : null; };
+  let steps = null, sleep = null;
+  if (p && typeof p === "object" && !Array.isArray(p)) {
+    for (const [k, v] of Object.entries(p)) {
+      if (/歩|step/i.test(k)) steps = num(v);
+      else if (/睡眠|寝|sleep/i.test(k)) sleep = num(v);
+    }
+  } else if (p != null) {
+    const t = String(p);
+    const ms = /(?:歩数|steps?)\D{0,4}([0-9０-９][0-9０-９,，.．]*)/i.exec(t) || /([0-9０-９][0-9０-９,，]*)\s*歩/.exec(t);
+    const mh = /(?:睡眠|sleep)\D{0,4}([0-9０-９][0-9０-９.．]*)/i.exec(t);
+    if (ms) steps = num(ms[1]); if (mh) sleep = num(mh[1]);
+    if (!ms && !mh && num(t) != null) steps = num(t);
+  }
+  // 睡眠は「時間」にそろえる(分や秒で来たときも直す)
+  if (sleep != null) { if (sleep > 1440) sleep = sleep / 3600; else if (sleep > 24) sleep = sleep / 60; sleep = Math.round(sleep * 10) / 10; }
+  if (steps != null) steps = Math.round(steps);
+  return { steps, sleep };
+}
+async function receiveHealth(param){
+  const h = loadHealth();
+  const ds = ymd(gameDate(new Date()));
+  const { steps, sleep } = parseHealthInput(param);
+  const rec = h[ds] || {};
+  if (steps != null) rec.steps = steps;
+  if (sleep != null) rec.sleep = sleep;
+  rec.at = Date.now();
+  h[ds] = rec;
+  for (const k of Object.keys(h)) if (k < ymd(new Date(Date.now() - 60 * 864e5))) delete h[k];
+  fm.writeString(HEALTH_FILE, JSON.stringify(h));
+  const msg = "ライフクエストに記録:" + (rec.steps != null ? "歩数 " + rec.steps.toLocaleString("ja-JP") + "歩" : "") + (rec.sleep != null ? " 睡眠 " + rec.sleep + "時間" : "");
+  Script.setShortcutOutput(msg);
+  return msg;
+}
+
 /* ---- Obsidian(Scriptable の設定 →「File Bookmarks」に「Obsidian」という名前で保管庫フォルダを登録) ---- */
 const OBS_BM = "Obsidian";
 const OBS_TAG = /#(quest|クエスト)(?![\w぀-ヿ一-龯])/i;
@@ -517,7 +589,10 @@ async function openGame(){
     remCals = [def].concat((await Calendar.forReminders()).filter(c => c.identifier !== def.identifier));
   } catch(e) {}
   const js = v => JSON.stringify(v).replace(/</g, "\\u003c");
-  const boot = "<script>window.__LQ_HOST__='scriptable';window.__LQ_STATE__=" + js(saved)
+  const weather = await getWeather(30);
+  const healthToday = loadHealth()[ymd(gameDate(new Date()))] || null;
+  const boot = "<script>window.__LQ_HOST__='scriptable';window.__LQ_WEATHER__=" + js(weather) + ";window.__LQ_HEALTH__=" + js(healthToday)
+    + ";window.__LQ_STATE__=" + js(saved)
     + ";window.__LQ_EVENTS__=" + js(events) + ";window.__LQ_MONTH__=" + js(month)
     + ";window.__LQ_MONTHRANGE__=" + js(monthRange().map(d => d.getTime()))
     + ";window.__LQ_REMS__=" + js(rems) + ";window.__LQ_REMS_ALL__=" + js(remAll) + ";window.__LQ_REMLISTS__=" + js(remCals.map(c => c.title)) + ";window.__LQ_REMINFO__=" + js(remInfo) + ";window.__LQ_WISHES__=" + js(wishes)
@@ -676,6 +751,8 @@ async function buildWidget(){
   const nextEv = evs.filter(e => !evDone[evId(e)] && (e.allDay || e.end > now.getTime()))
     .sort((a,b) => (a.allDay ? 0 : a.start) - (b.allDay ? 0 : b.start));
   const family = config.widgetFamily || "medium";
+  const wx = await getWeather(60);
+  const hToday = loadHealth()[t] || null;
   const rs = (await loadReminders()) || [];
   const rDone = st && st.rems && st.rems.date === t ? st.rems.done || {} : {};
   const remsLeft = rs.filter(r => !r.completed && !rDone["r" + hash(String(r.id)).toString(36)]);
@@ -743,7 +820,7 @@ async function buildWidget(){
     text(head, "今日の予定", 13, C.gold, true);
     head.addSpacer();
     const d = new Date(now);
-    text(head, (d.getMonth()+1) + "/" + d.getDate() + "(" + "日月火水木金土"[d.getDay()] + ")", 12, C.dim);
+    text(head, (d.getMonth()+1) + "/" + d.getDate() + "(" + "日月火水木金土"[d.getDay()] + ")" + (wx ? "  " + wxIcon(wx.now.code) + Math.round(wx.now.t) + "°" : ""), 12, C.dim);
     w.addSpacer(4);
     if (!upcoming.length) {
       text(w, evsRaw ? "今日はこのあと予定なし" : "タップしてカレンダーを許可してください", size - 1, C.dim);
@@ -763,7 +840,7 @@ async function buildWidget(){
   }
   function footer2(){
     const row = w.addStack(); row.centerAlignContent(); row.spacing = 4;
-    text(row, (st ? st.gold || 0 : 0) + "G ・ 連続" + streak + "日" + (remsLeft.length ? " ・ リマインダー" + remsLeft.length : ""), 12, C.dim);
+    text(row, (st ? st.gold || 0 : 0) + "G ・ 連続" + streak + "日" + (hToday && hToday.steps != null ? " ・ 👣" + hToday.steps.toLocaleString("ja-JP") : "") + (remsLeft.length ? " ・ リマインダー" + remsLeft.length : ""), 12, C.dim);
     row.addSpacer();
     const d = row.addDate(nextReset(now)); d.applyTimerStyle(); d.font = Font.mediumMonospacedSystemFont(12); d.textColor = C.dim; d.rightAlignText();
   }
@@ -964,7 +1041,11 @@ async function buildWidget(){
   return w;
 }
 
-if (config.runsInWidget) {
+const shortcutParam = typeof args !== "undefined" ? args.shortcutParameter : null;
+if (shortcutParam !== null && shortcutParam !== undefined && !config.runsInWidget) {
+  // ショートカットから呼ばれたとき:歩数・睡眠を記録するだけ(画面は出さない)
+  await receiveHealth(shortcutParam);
+} else if (config.runsInWidget) {
   Script.setWidget(await buildWidget());
 } else {
   try { await openGame(); }

@@ -400,6 +400,8 @@ function fresh(){
     diary:{},
     diaryReward:{},
     viewMode:"sheet",
+    wx:{date:"",done:false},
+    health:{date:"",got:{}},
     hist:{},
     wardrobe:{owned:{},wear:""},
     multi:{},
@@ -428,6 +430,8 @@ function normalize(s){
   if(!o.hist||typeof o.hist!=="object")o.hist={};
   if(!o.multi||typeof o.multi!=="object")o.multi={};
   if(!o.diary||typeof o.diary!=="object")o.diary={};
+  o.wx=Object.assign({date:"",done:false},s.wx||{});
+  o.health=Object.assign({date:"",got:{}},s.health||{});if(!o.health.got)o.health.got={};
   if(!o.diaryReward||typeof o.diaryReward!=="object")o.diaryReward={};
   o.wardrobe=Object.assign({owned:{},wear:""},s.wardrobe||{});if(!o.wardrobe.owned||typeof o.wardrobe.owned!=="object")o.wardrobe.owned={};
   o.week=Object.assign(fresh().week,s.week||{});
@@ -500,6 +504,8 @@ function rollover(now=new Date()){
   if(state.daily.date!==t){state.daily={date:t,ids:dailyFor(t),done:{},bonus:false};changed=true}
   if(state.events.date!==t){state.events={date:t,done:{}};changed=true}
   if(state.obs.date!==t){state.obs={date:t,done:{}};changed=true}
+  if(state.wx.date!==t){state.wx={date:t,done:false};changed=true}
+  if(state.health.date!==t){state.health={date:t,got:{}};changed=true}
   if(state.rems.date!==t){state.rems={date:t,done:{}};changed=true;
     for(const k in state.multi){if((state.multi[k].end||0)<Date.now()-30*864e5)delete state.multi[k]}}
   if(state.dayCount.date!==t){state.dayCount={date:t,n:0};changed=true}
@@ -611,7 +617,7 @@ function askName(){
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 let tab="quest";
 try{tab=sessionStorage.getItem("lq.tab")||"quest"}catch(e){}
-let ui={noteOpen:"",remAll:false,lastCal:"",addPay:false,editEv:"",delConfirm:false,buyConfirm:"",priceEdit:"",addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
+let ui={hsOpen:false,noteOpen:"",remAll:false,lastCal:"",addPay:false,editEv:"",delConfirm:false,buyConfirm:"",priceEdit:"",addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
 const app=document.getElementById("app");
 
 function heroHTML(now){
@@ -631,6 +637,7 @@ function heroHTML(now){
       <span>きょう <strong class="mono">${state.dayCount.n}件</strong></span>
       <span id="save-st" style="margin-left:auto">${saveLabel()}</span>
     </div>
+    ${wxLine()}
     <div class="clock"><span>${now.getMonth()+1}/${now.getDate()}(${WD[now.getDay()]}) <b class="mono">${pad(now.getHours())}:${pad(now.getMinutes())}</b> ・ ${phase(now)}の刻</span><span>リセットまで <b class="mono" id="reset-cd">${fmtDur(untilReset(now))}</b></span></div>
   </section>`;
 }
@@ -954,7 +961,7 @@ function questStateFor(q,now){
 function questRow(q,kind,now){
   const D=DIFF[q.d], S=STATS[q.s];
   let right, cls="q", extra="";
-  const done = kind==="daily" ? !!state.daily.done[q.id] : kind==="event" ? !!state.events.done[q.id] : kind==="rem" ? !!state.rems.done[q.id] : kind==="obs" ? !!state.obs.done[q.id] : isDoneNow(q);
+  const done = kind==="wx" ? !!state.wx.done : kind==="daily" ? !!state.daily.done[q.id] : kind==="event" ? !!state.events.done[q.id] : kind==="rem" ? !!state.rems.done[q.id] : kind==="obs" ? !!state.obs.done[q.id] : isDoneNow(q);
   if(done){
     cls+=" done";
     right=`<button class="stamp" data-undo="${kind}:${q.id}" aria-label="${esc(q.t)} の達成を取り消す">CLEAR</button>`;
@@ -963,6 +970,8 @@ function questRow(q,kind,now){
     if(s.st==="locked"){cls+=" locked";right=`<div class="wait">受注まで<br><span class="mono">${s.wait}</span></div>`}
     else if(s.st==="expired"){cls+=" expired";right=`<span class="expired-tag">期限切れ</span>`}
     else{right=`<button class="btn go" data-do="daily:${q.id}">達成</button>`;if(s.left)extra=`<span>のこり ${s.left}</span>`}
+  }else if(kind==="wx"){
+    right=`<button class="btn go" data-do="wx:wx">達成</button>`;
   }else if(kind==="rem"||kind==="obs"){
     right=`<button class="btn go" data-do="${kind}:${q.id}">達成</button>`;
   }else if(kind==="event"){
@@ -973,6 +982,7 @@ function questRow(q,kind,now){
   }
   const when = kind==="daily" ? `<span class="chip">${q.to?WINDOWS[q.w].n.replace(/〜.*$/,"〜"+(q.to>=24?q.to-24:q.to)+"時"):WINDOWS[q.w].n}</span>`
     : kind==="event" ? `<span class="chip">${multiDay(q)?(q.allDay?"終日 ":hm(q.start)+" ")+multiTxt(q,today()):(q.allDay?"終日":hm(q.start)+"〜"+hm(q.end))}</span>${q.shift?`<span class="chip rew">シフト</span>`:""}${q.days?`<span class="chip">達成 ${((state.multi[q.mkey]||{}).days||[]).length}/${q.days}日</span>`:""}`
+    : kind==="wx" ? `<span class="chip">今日の天気</span>`
     : kind==="obs" ? `${q.overdue&&!done?`<span class="chip expired-tag">期限切れ</span>`:q.due?`<span class="chip">${remDueLabel(q)}</span>`:q.inDaily?`<span class="chip">今日のノート</span>`:""}<span>${esc(q.file||"")}</span>`
     : kind==="rem" ? `${q.overdue&&!done?`<span class="chip expired-tag">期限切れ</span>`:`<span class="chip">${remDueLabel(q)}</span>`}${q.list?`<span>${esc(q.list)}</span>`:""}`
     : `<span class="chip">${(REPEAT[q.r]||REPEAT.daily).chip}</span>`;
@@ -987,6 +997,7 @@ function questTab(now){
   const wk=Math.min(state.week.n,WEEK_GOAL);
   const customs=state.custom.filter(c=>!(c.r==="once"&&c.doneOn&&c.doneOn!==today()));
   return `
+  ${wxSection(now)}
   <section class="win" aria-labelledby="h-daily">
     <h2 class="win-title" id="h-daily"><b>デイリーミッション</b><span class="mono">${dn} / ${qs.length}</span></h2>
     <div class="progress-line"><div class="bar"><i style="width:${qs.length?dn/qs.length*100:0}%"></i></div></div>
@@ -1001,6 +1012,7 @@ function questTab(now){
     ?"リマインダーを読めませんでした。iPhoneの「設定」→「Scriptable」→「リマインダー」をオンにして、もう一度ウィジェットから開いてください。"
     :"リマインダーの表示と追加は、ホーム画面のウィジェットをタップして開いたゲームで使えます。"}</div>${remInfoLine()}</section>`}
   ${obsSection(now)}
+  ${healthSection()}
 
   <section class="win" aria-label="今日の日記">${diaryEditor(today(),"今日の日記")}</section>
 
@@ -1044,6 +1056,7 @@ function statusTab(){
     </div>
     <p class="note" style="margin:8px 0 0">1日にクエストを3つ以上達成すると、連続日数がのびます。</p>
   </section>
+  ${healthSetupSection()}
   ${obsStatusSection()}
   <section class="win" aria-labelledby="h-rank">
     <h2 class="win-title" id="h-rank"><b>階級の道</b><span class="mono">Lv上限 ${MAX_LV}</span></h2>
@@ -1161,6 +1174,83 @@ function shopTab(){
   return wardrobeSection()+wishSec;
 }
 
+/* ---------- 天気(Scriptable が現在地の天気を渡してくる) ---------- */
+const WEATHER = window.__LQ_WEATHER__ || null;
+function wxInfo(code){
+  if(code===0)return["☀️","晴れ"];if(code<=2)return["🌤","晴れ時々くもり"];if(code===3)return["☁️","くもり"];if(code<=48)return["🌫","霧"];
+  if(code<=57)return["🌦","霧雨"];if(code<=67)return["🌧","雨"];if(code<=77)return["❄️","雪"];if(code<=82)return["🌦","にわか雨"];if(code<=86)return["🌨","にわか雪"];return["⛈","雷雨"];
+}
+function wxToday(){if(!WEATHER||!WEATHER.days)return null;return WEATHER.days.find(d=>d.date===today())||WEATHER.days[0]}
+function wxLine(){
+  const d=wxToday();if(!d)return"";
+  const [ic,nm]=wxInfo(d.code);
+  return `<div class="meta" style="margin-top:6px"><span>${ic} ${nm}</span><span>いま <strong class="mono">${Math.round(WEATHER.now.t)}°</strong></span><span class="mono">${Math.round(d.max)}° / ${Math.round(d.min)}°</span><span>☂ <strong class="mono">${d.pop??"-"}%</strong></span>${WEATHER.place?`<span>${esc(WEATHER.place)}</span>`:""}</div>`;
+}
+// 今日の天気に合わせたクエスト(1日1つ)
+function wxQuest(){
+  const d=wxToday();if(!d)return null;
+  const c=d.code,rain=(c>=51&&c<=67)||(c>=80&&c<=82)||c>=95||(d.pop||0)>=50,snow=(c>=71&&c<=77)||c===85||c===86;
+  let t,st="mind";
+  if(snow){t="あたたかくして、足もとに気をつけて出かける";st="body"}
+  else if(rain)t="傘を忘れずに持って出かける";
+  else if(d.max>=30){t="こまめに水分をとる(コップ5杯)";st="body"}
+  else if(d.min<=5){t="あたたかい飲み物で ひと休みする";st="body"}
+  else if(c<=2)t="外に出て、5分 空を見上げる";
+  else t="窓を開けて、空気を入れかえる";
+  return {id:"wx",t,s:st,d:1,icon:wxInfo(c)[0]};
+}
+function wxSection(now){
+  const q=wxQuest();if(!q)return"";
+  return `<section class="win" aria-labelledby="h-wx"><h2 class="win-title" id="h-wx"><b>${q.icon} 天気クエスト</b><span>${wxInfo(wxToday().code)[1]}</span></h2>
+    <ul class="qlist">${questRow(q,"wx",now)}</ul></section>`;
+}
+
+/* ---------- ヘルスケア(ショートカットが歩数・睡眠を渡してくる) ---------- */
+const HEALTH = window.__LQ_HEALTH__ || null;
+const STEP_TIERS=[{id:"s5",n:5000,d:1},{id:"s8",n:8000,d:2},{id:"s10",n:10000,d:3}];
+const SLEEP_TIERS=[{id:"z6",h:6,d:1},{id:"z7",h:7,d:2}];
+function healthSection(){
+  if(!IN_WIDGET_APP||!HEALTH)return"";
+  const steps=HEALTH.steps,sleep=HEALTH.sleep;
+  const next=STEP_TIERS.find(t=>steps==null||steps<t.n);
+  const tierRow=(got,label,d)=>`<li class="q ${got?"done":""}"><span class="cur" aria-hidden="true">▶</span><span class="q-t">${label}</span>${got?`<span class="stamp" style="cursor:default">CLEAR</span>`:`<span class="wait">自動で達成</span>`}
+    <div class="q-sub"><span class="st-body">体力</span><span>${DIFF[d].n}</span><span class="rew">+${DIFF[d].xp}EXP ${DIFF[d].g}G</span></div></li>`;
+  return `<section class="win" aria-labelledby="h-hl">
+    <h2 class="win-title" id="h-hl"><b>ヘルスケア</b><span>${HEALTH.at?"受け取り "+hm(HEALTH.at):""}</span></h2>
+    ${steps!=null?`<div class="progress-line"><span>👣 <b class="mono" style="color:var(--ink)">${steps.toLocaleString("ja-JP")}</b>歩</span><div class="bar"><i style="width:${Math.min(100,steps/10000*100)}%;background:var(--c-body)"></i></div><span class="mono">${next?"あと"+(next.n-steps).toLocaleString("ja-JP"):"達成！"}</span></div>`:""}
+    ${sleep!=null?`<div class="progress-line"><span>🛏 <b class="mono" style="color:var(--ink)">${sleep}</b>時間</span><div class="bar"><i style="width:${Math.min(100,sleep/8*100)}%;background:var(--c-mind)"></i></div></div>`:""}
+    <ul class="qlist">${steps!=null?STEP_TIERS.map(t=>tierRow(!!state.health.got[t.id],t.n.toLocaleString("ja-JP")+"歩 あるく",t.d)).join(""):""}${sleep!=null?SLEEP_TIERS.map(t=>tierRow(!!state.health.got[t.id],t.h+"時間以上 ねる",t.d)).join(""):""}</ul>
+    <p class="note" style="margin:6px 0 0">ショートカットから届いた歩数・睡眠で、自動で達成になります。</p>
+  </section>`;
+}
+function collectHealth(){
+  if(!HEALTH||!state.name)return;
+  const got=[];
+  if(HEALTH.steps!=null)for(const t of STEP_TIERS)if(HEALTH.steps>=t.n&&!state.health.got[t.id])got.push([t,t.n.toLocaleString("ja-JP")+"歩 あるいた"]);
+  if(HEALTH.sleep!=null)for(const t of SLEEP_TIERS)if(HEALTH.sleep>=t.h&&!state.health.got[t.id])got.push([t,t.h+"時間以上 ねた"]);
+  if(!got.length)return;
+  let lv=0,xp=0;
+  for(const [t,label] of got){const D=DIFF[t.d];lv=grant(D.xp,D.g,"body",label)||lv;state.health.got[t.id]=true;countDone(1);xp+=D.xp}
+  save();render();
+  if(lv)showLevelUp(lv);else say([`ヘルスケア:${got.map(g=>g[1]).join("、")}！`,`${xp} の経験値を手に入れた。`]);
+}
+function healthSetupSection(){
+  if(!IN_WIDGET_APP)return"";
+  return `<section class="win" aria-labelledby="h-hs">
+    <h2 class="win-title" id="h-hs"><b>ヘルスケアとつなぐ</b><span>${HEALTH?"つながっています":"まだ届いていません"}</span></h2>
+    ${ui.hsOpen?`<ol class="note" style="margin:0;padding-left:1.4em;line-height:1.8">
+      <li>「ショートカット」アプリで、新しいショートカットを作る</li>
+      <li>アクション「<b>ヘルスケアのサンプルを検索</b>」を追加:種類「歩数」、開始日「今日」</li>
+      <li>アクション「<b>統計を計算</b>」を追加:「合計」</li>
+      <li>アクション「<b>テキスト</b>」を追加して「歩数 」のあとに、統計の結果を入れる</li>
+      <li>(睡眠も入れるなら)「ヘルスケアのサンプルを検索」:種類「睡眠分析」、開始日「過去1日」→「統計を計算」:合計 →テキストに「睡眠 」と結果(時間)を入れる</li>
+      <li>アクション「<b>Scriptable のスクリプトを実行</b>」を追加:スクリプト「ライフクエスト」、パラメータに上のテキスト、「Run In App」はオフ</li>
+      <li>「オートメーション」→「時刻」で、毎日 22:00(と朝 10:00)にこのショートカットを「すぐに実行」する</li>
+    </ol>`:`<p class="note" style="margin:0">iPhoneの「ショートカット」アプリで、歩数と睡眠を毎日ゲームに送る設定をします。</p>`}
+    <div class="row" style="margin-top:8px"><button class="btn small ghost" id="toggle-hs">${ui.hsOpen?"手順をとじる":"設定の手順を見る"}</button></div>
+  </section>`;
+}
+
 /* ---------- 日記 ---------- */
 function diaryText(ds){return (state.diary[ds]&&state.diary[ds].text)||""}
 function diaryEditor(ds,title){
@@ -1274,6 +1364,8 @@ function complete(kind,id){
   if(kind==="daily"){
     q=POOL.find(p=>p.id===id);if(!q||state.daily.done[id])return;
     if(questStateFor(q,new Date()).st!=="open")return;
+  }else if(kind==="wx"){
+    q=wxQuest();if(!q||state.wx.done)return;
   }else if(kind==="obs"){
     q=obsQuests().find(r=>r.id===id);if(!q||state.obs.done[id])return;
   }else if(kind==="rem"){
@@ -1295,7 +1387,8 @@ function complete(kind,id){
         lines.push(`「${q.t}」全${q.days}日 達成！ ボーナス ${MULTI_BONUS.xp}EXP！`)}
       else lines.push(`全${q.days}日のうち ${m.days.length}日ぶん クリア。`)}}
   else if(kind==="rem"){state.rems.done[id]=true;pushOp({type:"rem",id,done:true})}
-  else if(kind==="obs"){state.obs.done[id]=true;pushOp({type:"obsTask",id,done:true})}else q.doneOn=today();
+  else if(kind==="obs"){state.obs.done[id]=true;pushOp({type:"obsTask",id,done:true})}
+  else if(kind==="wx"){state.wx.done=true}else q.doneOn=today();
   if(countDone(1))lines.push(`連続 ${state.streak}日目！ よくがんばった。`);
   if(kind==="daily"&&!state.daily.bonus&&state.daily.ids.every(i=>state.daily.done[i])){
     state.daily.bonus=true;lv=grant(ALL_CLEAR.xp,ALL_CLEAR.g,null,"デイリー オールクリア")||lv;
@@ -1317,6 +1410,7 @@ function undo(kind,id){
     if(m){m.days=m.days.filter(d=>d!==today());if(m.bonus&&m.days.length<q.days){m.bonus=false;grant(MULTI_BONUS.xp,MULTI_BONUS.g,q.s,"全日程達成:"+q.t,-1)}}}
   else if(kind==="rem"){q=remQuests(true).find(r=>r.id===id);if(!q||!state.rems.done[id])return;delete state.rems.done[id];pushOp({type:"rem",id,done:false})}
   else if(kind==="obs"){q=obsQuests().find(r=>r.id===id);if(!q||!state.obs.done[id])return;delete state.obs.done[id];pushOp({type:"obsTask",id,done:false})}
+  else if(kind==="wx"){q=wxQuest();if(!q||!state.wx.done)return;state.wx.done=false}
   else{q=state.custom.find(c=>c.id===id);if(!q||!isDoneNow(q))return;sameDay=q.doneOn===today();q.doneOn=""}
   const D=DIFF[q.d];grant(D.xp,D.g,q.s,q.t,-1);countDone(-1,sameDay);
   if(state.week.bonus&&state.week.n<WEEK_GOAL){state.week.bonus=false;grant(WEEK_BONUS.xp,WEEK_BONUS.g,null,"ウィークリー達成",-1)}
@@ -1366,6 +1460,7 @@ app.addEventListener("click",e=>{
     case"make-wishlist":wishListCreating=true;pushOp({type:"makeWishList"});render();break;
     case"open-pay":ui.addPay=true;render();document.getElementById("pay-title").focus();break;
     case"cancel-pay":ui.addPay=false;render();break;
+    case"toggle-hs":ui.hsOpen=!ui.hsOpen;render();break;
     case"save-diary":{const ta=document.getElementById("diary-text");if(ta)saveDiary(ta.dataset.ds,ta.value);break}
     case"open-rem":ui.addRem=true;render();document.getElementById("rem-title").focus();break;
     case"cancel-rem":ui.addRem=false;render();break;
@@ -1526,7 +1621,7 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden)render()})
 
 render();
 if(!state.name)askName();
-else collectRemsDoneElsewhere();
+else {collectRemsDoneElsewhere();setTimeout(collectHealth,1200);}
 
 /* offline support */
 if(!IN_WIDGET_APP&&"serviceWorker" in navigator&&location.protocol==="https:"){
