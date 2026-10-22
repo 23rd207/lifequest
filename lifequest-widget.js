@@ -949,31 +949,77 @@ async function buildWidget(){
     : soon.length ? dayLabel(soon[0].start) + (soon[0].allDay ? "" : " " + hm(soon[0].start)) + " " + (soon[0].title || "予定")
     : "予定なし";
   const nextTodo = remsLeft.length ? remsLeft[0].title : openQuests.length ? openQuests[0].t : "";
+  // 天気と歩数の短い表記(ロック画面用)
+  const wxShort = wx && wx.now ? wxIcon(wx.now.code) + Math.round(wx.now.t) + "°" : "";
+  const stepsShort = hToday && hToday.steps != null ? "👣" + hToday.steps.toLocaleString("ja-JP") : "";
+  const lockParam = param; // ウィジェットの「Parameter」:予定 / 天気 / 歩数 / Lv / デイリー
   if (family === "accessoryInline") {
-    // 時計の上の1行
-    const t = w.addText("Lv" + L.lv + " ・ デイリー" + nDone + "/" + quests.length + " ・ " + nextLabel);
+    // 時計の上の1行(Parameter:天気 → 天気と気温、歩数 → 歩数、それ以外 → Lv・デイリー・次の予定)
+    let line;
+    if (/天気|weather/i.test(lockParam) && wx) { const d0 = (wx.days || [])[0]; line = wxShort + (d0 ? " " + Math.round(d0.max) + "°/" + Math.round(d0.min) + "° ☂" + (d0.pop ?? "-") + "%" : ""); }
+    else if (/歩|step/i.test(lockParam)) line = stepsShort ? stepsShort + "歩" : "👣 まだ届いていません";
+    else line = "Lv" + L.lv + " ・ デイリー" + nDone + "/" + quests.length + (wxShort ? " ・ " + wxShort : "") + " ・ " + nextLabel;
+    const t = w.addText(line);
     t.font = Font.systemFont(12); t.lineLimit = 1; t.minimumScaleFactor = 0.6;
     return w;
   }
   if (family === "accessoryCircular") {
-    // 丸:デイリーの進み具合とレベル
     w.addAccessoryWidgetBackground = true;
     w.setPadding(0, 0, 0, 0);
-    const col = w.addStack(); col.layoutVertically(); col.centerAlignContent();
-    const top = col.addStack(); top.addSpacer(); const a1 = top.addText("Lv" + L.lv); a1.font = Font.boldSystemFont(11); top.addSpacer();
-    const mid = col.addStack(); mid.addSpacer(); const a2 = mid.addText(nDone + "/" + quests.length); a2.font = Font.boldRoundedSystemFont ? Font.boldRoundedSystemFont(18) : Font.boldSystemFont(18); mid.addSpacer();
-    const bot = col.addStack(); bot.addSpacer(); const a3 = bot.addText(nDone === quests.length ? "★" : "デイリー"); a3.font = Font.systemFont(8); bot.addSpacer();
+    // 進み具合の輪(0〜1)を描く
+    const ring = ratio => {
+      const n = 60, ctx = new DrawContext(); ctx.size = new Size(n, n); ctx.opaque = false; ctx.respectScreenScale = true;
+      const arc = (from, to, alpha) => {
+        const pts = [], steps = Math.max(2, Math.round((to - from) * 60));
+        for (let i = 0; i <= steps; i++) { const a = -Math.PI / 2 + (from + (to - from) * i / steps) * Math.PI * 2; pts.push(new Point(n / 2 + 26 * Math.cos(a), n / 2 + 26 * Math.sin(a))); }
+        const p = new Path(); p.addLines(pts); ctx.addPath(p); ctx.setStrokeColor(new Color("#ffffff", alpha)); ctx.setLineWidth(4); ctx.strokePath();
+      };
+      arc(0, 1, 0.25);
+      if (ratio > 0) arc(0, Math.min(1, ratio), 1);
+      return ctx.getImage();
+    };
+    const center = (lines) => {
+      const col = w.addStack(); col.layoutVertically(); col.centerAlignContent();
+      for (const [str, size, bold] of lines) {
+        const r = col.addStack(); r.addSpacer(); const tx = r.addText(str);
+        tx.font = bold ? Font.boldSystemFont(size) : Font.systemFont(size); tx.lineLimit = 1; tx.minimumScaleFactor = 0.6; r.addSpacer();
+      }
+    };
+    if (/歩|step/i.test(lockParam)) {
+      // 歩数:8,000歩までの輪 + 歩数
+      const st = hToday && hToday.steps != null ? hToday.steps : null;
+      w.backgroundImage = ring(st != null ? st / 8000 : 0);
+      center([["👣", 10], [st != null ? (st >= 10000 ? (st / 1000).toFixed(1) + "k" : st.toLocaleString("ja-JP")) : "--", st != null && st >= 1000 ? 12 : 14, true]]);
+    } else if (/天気|weather/i.test(lockParam)) {
+      const d0 = wx && wx.days ? wx.days[0] : null;
+      center([[wx ? wxIcon(wx.now.code) : "?", 18], [wx ? Math.round(wx.now.t) + "°" : "--", 13, true], [d0 ? "☂" + (d0.pop ?? "-") + "%" : "", 8]]);
+    } else if (/^lv|レベル/i.test(lockParam)) {
+      w.backgroundImage = ring(L.cur / L.need);
+      center([["Lv", 9], [String(L.lv), 18, true]]);
+    } else {
+      // デイリー:輪 + 達成数
+      w.backgroundImage = ring(quests.length ? nDone / quests.length : 0);
+      center([["Lv" + L.lv, 9], [nDone + "/" + quests.length, 16, true], [nDone === quests.length ? "★" : "デイリー", 7]]);
+    }
     return w;
   }
   if (family === "accessoryRectangular") {
-    // 横長:次の予定 / デイリーとレベル / 次にやること
     w.setPadding(0, 0, 0, 0);
-    const l1 = w.addText("▶ " + nextLabel); l1.font = Font.boldSystemFont(13); l1.lineLimit = 1; l1.minimumScaleFactor = 0.7;
+    const line = (str, size, bold, op) => { const t = w.addText(str); t.font = bold ? Font.boldSystemFont(size) : Font.systemFont(size); t.lineLimit = 1; t.minimumScaleFactor = 0.7; if (op) t.textOpacity = op; return t; };
+    if (/予定|schedule/i.test(lockParam)) {
+      // 予定:このあとの予定を3件(なければ近々の予定)
+      const list = upcoming.filter(e => e.allDay || e.end > now.getTime()).map(e => (e.allDay ? "終日 " : hm(e.start) + " ") + (e.title || "予定"))
+        .concat(soon.map(e => dayLabel(e.start) + (e.allDay ? " " : " " + hm(e.start) + " ") + (e.title || "予定"))).slice(0, 3);
+      if (!list.length) line("予定はありません", 13, true);
+      list.forEach((x, i) => line((i === 0 ? "▶ " : "・") + x, i === 0 ? 13 : 11, i === 0, i === 0 ? 0 : 0.85));
+      return w;
+    }
+    // ふだん:次の予定 / Lv・デイリー・天気・歩数 / 次にやること
+    line("▶ " + nextLabel, 13, true);
     const ul = nextUp ? untilLabel(nextUp) : "";
-    const l2 = w.addText("Lv" + L.lv + " ・ デイリー " + nDone + "/" + quests.length + (ul ? " ・ " + ul : ""));
-    l2.font = Font.systemFont(11); l2.lineLimit = 1; l2.minimumScaleFactor = 0.7; l2.textOpacity = 0.8;
-    if (nextTodo) { const l3 = w.addText((remsLeft.length ? "! " : "・") + nextTodo); l3.font = Font.systemFont(11); l3.lineLimit = 1; l3.minimumScaleFactor = 0.7; l3.textOpacity = 0.8; }
-    else { const l3 = w.addText(nDone === quests.length ? "★ デイリー全部クリア！" : "このあとは ゆっくり"); l3.font = Font.systemFont(11); l3.lineLimit = 1; l3.textOpacity = 0.8; }
+    line(["Lv" + L.lv, "デイリー" + nDone + "/" + quests.length, wxShort, stepsShort, ul].filter(Boolean).join(" ・ "), 11, false, 0.85);
+    if (nextTodo) line((remsLeft.length ? "! " : "・") + nextTodo, 11, false, 0.85);
+    else line(nDone === quests.length ? "★ デイリー全部クリア！" : "このあとは ゆっくり", 11, false, 0.85);
     return w;
   }
 
