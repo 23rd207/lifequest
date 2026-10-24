@@ -307,11 +307,31 @@ function setPriceInNotes(notes, price){
 
 /* ---- 天気(現在地 + Open-Meteo。キーなしで使える無料の天気API) ---- */
 const WX_FILE = fm.joinPath(dir, "lifequest-weather.json");
-async function getWeather(maxAgeMin){
+function cachedWeather(){ try { return JSON.parse(fm.readString(WX_FILE)).data || null; } catch(e) { return null; } }
+function kmBetween(a, b){
+  const R = 6371, t = Math.PI / 180, dLa = (b.lat - a.lat) * t, dLo = (b.lon - a.lon) * t;
+  const x = Math.sin(dLa / 2) ** 2 + Math.cos(a.lat * t) * Math.cos(b.lat * t) * Math.sin(dLo / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+// freshLoc = true:ゲームを開いたとき。位置を毎回取り直し、2km以上動いていたら天気も取り直す
+async function getWeather(maxAgeMin, freshLoc){
   let cache = null; try { cache = JSON.parse(fm.readString(WX_FILE)); } catch(e) {}
-  if (cache && cache.data && Date.now() - cache.at < maxAgeMin * 60e3) return cache.data;
+  let moved = false, freshPos = null;
+  if (freshLoc) {
+    try {
+      Location.setAccuracyToThreeKilometers();
+      const l = await Promise.race([Location.current(), new Promise((_, rej) => Timer.schedule(8000, false, () => rej("timeout")))]);
+      freshPos = { lat: l.latitude, lon: l.longitude, at: Date.now(), place: "" };
+      moved = !cache || !cache.loc || kmBetween(cache.loc, freshPos) > 2;
+      if (!moved && cache && cache.loc) { cache.loc.at = Date.now(); freshPos = null; }
+    } catch(e) {}
+  }
+  if (!moved && cache && cache.data && Date.now() - cache.at < maxAgeMin * 60e3) return cache.data;
   try {
-    let loc = cache && cache.loc && Date.now() - (cache.loc.at || 0) < 6 * 3600e3 ? cache.loc : null;
+    let loc = freshPos || (cache && cache.loc && (freshLoc || Date.now() - (cache.loc.at || 0) < 6 * 3600e3) ? cache.loc : null);
+    if (loc && !loc.place && freshPos) {
+      try { const g = await Location.reverseGeocode(loc.lat, loc.lon, "ja_JP"); const a = g && g[0]; if (a) loc.place = a.locality || a.subAdministrativeArea || a.administrativeArea || ""; } catch(e) {}
+    }
     if (!loc) {
       try {
         Location.setAccuracyToThreeKilometers();
@@ -589,7 +609,7 @@ async function openGame(){
     remCals = [def].concat((await Calendar.forReminders()).filter(c => c.identifier !== def.identifier));
   } catch(e) {}
   const js = v => JSON.stringify(v).replace(/</g, "\\u003c");
-  const weather = await getWeather(30);
+  const weather = cachedWeather();
   const healthToday = loadHealth()[ymd(gameDate(new Date()))] || null;
   const boot = "<script>window.__LQ_HOST__='scriptable';window.__LQ_WEATHER__=" + js(weather) + ";window.__LQ_HEALTH__=" + js(healthToday)
     + ";window.__LQ_STATE__=" + js(saved)
@@ -729,10 +749,18 @@ async function openGame(){
   }
   // Obsidian は、ゲームが表示されてから読み込んで渡す。
   // ゲームとのやりとりは1つずつ順番に行う(同時に呼ぶと Scriptable が固まることがあるため)
-  let obsData = null, obsSent = false, obsTried = false;
+  let obsData = null, obsSent = false, obsTried = false, wxSent = false;
   while (open) {
     await wait(1000);
     await drain();
+    if (!wxSent && open) {
+      // 今いる場所の天気に更新して、ゲームに渡す
+      wxSent = true;
+      try {
+        const fresh = await getWeather(30, true);
+        if (fresh && open) await wv.evaluateJavaScript("window.__lqSetWeather&&window.__lqSetWeather(" + js(fresh) + ");0", false);
+      } catch(e) {}
+    }
     if (!obsTried && open) {
       obsTried = true;
       try { obsData = await loadObsidian(); } catch(e) { obsData = { ok: false, reason: "error", error: String(e) }; }

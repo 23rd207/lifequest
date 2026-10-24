@@ -1187,7 +1187,13 @@ function shopTab(){
 }
 
 /* ---------- 天気(Scriptable が現在地の天気を渡してくる) ---------- */
-const WEATHER = window.__LQ_WEATHER__ || null;
+let WEATHER = window.__LQ_WEATHER__ || null;
+// 開いたあとに Scriptable が今いる場所の天気を送ってくる
+window.__lqSetWeather = function(d){
+  if(!d)return; WEATHER = d;
+  const a=document.activeElement; if(a&&a.matches&&a.matches("input,textarea,select"))return;
+  render();
+};
 function wxInfo(code){
   if(code===0)return["☀️","晴れ"];if(code<=2)return["🌤","晴れ時々くもり"];if(code===3)return["☁️","くもり"];if(code<=48)return["🌫","霧"];
   if(code<=57)return["🌦","霧雨"];if(code<=67)return["🌧","雨"];if(code<=77)return["❄️","雪"];if(code<=82)return["🌦","にわか雨"];if(code<=86)return["🌨","にわか雪"];return["⛈","雷雨"];
