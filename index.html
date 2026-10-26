@@ -400,6 +400,8 @@ function fresh(){
     diary:{},
     diaryReward:{},
     viewMode:"sheet",
+    lifeEvents:[],
+    care:{date:"",done:false},
     wx:{date:"",done:false},
     health:{date:"",got:{}},
     hist:{},
@@ -431,6 +433,8 @@ function normalize(s){
   if(!o.multi||typeof o.multi!=="object")o.multi={};
   if(!o.diary||typeof o.diary!=="object")o.diary={};
   o.wx=Object.assign({date:"",done:false},s.wx||{});
+  o.care=Object.assign({date:"",done:false},s.care||{});
+  if(!Array.isArray(o.lifeEvents))o.lifeEvents=[];
   o.health=Object.assign({date:"",got:{}},s.health||{});if(!o.health.got)o.health.got={};
   if(!o.diaryReward||typeof o.diaryReward!=="object")o.diaryReward={};
   o.wardrobe=Object.assign({owned:{},wear:""},s.wardrobe||{});if(!o.wardrobe.owned||typeof o.wardrobe.owned!=="object")o.wardrobe.owned={};
@@ -510,6 +514,7 @@ function rollover(now=new Date()){
   if(state.events.date!==t){state.events={date:t,done:{}};changed=true}
   if(state.obs.date!==t){state.obs={date:t,done:{}};changed=true}
   if(state.wx.date!==t){state.wx={date:t,done:false};changed=true}
+  if(state.care.date!==t){state.care={date:t,done:false};changed=true}
   if(state.health.date!==t){state.health={date:t,got:{}};changed=true}
   if(state.rems.date!==t){state.rems={date:t,done:{}};changed=true;
     for(const k in state.multi){if((state.multi[k].end||0)<Date.now()-30*864e5)delete state.multi[k]}}
@@ -622,7 +627,7 @@ function askName(){
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 let tab="quest";
 try{tab=sessionStorage.getItem("lq.tab")||"quest"}catch(e){}
-let ui={editRem:"",remDel:false,hsOpen:false,noteOpen:"",remAll:false,lastCal:"",addPay:false,editEv:"",delConfirm:false,buyConfirm:"",priceEdit:"",addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
+let ui={lifeAdd:false,editRem:"",remDel:false,hsOpen:false,noteOpen:"",remAll:false,lastCal:"",addPay:false,editEv:"",delConfirm:false,buyConfirm:"",priceEdit:"",addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
 const app=document.getElementById("app");
 
 function heroHTML(now){
@@ -971,7 +976,7 @@ function questStateFor(q,now){
 function questRow(q,kind,now){
   const D=DIFF[q.d], S=STATS[q.s];
   let right, cls="q", extra="";
-  const done = kind==="wx" ? !!state.wx.done : kind==="daily" ? !!state.daily.done[q.id] : kind==="event" ? !!state.events.done[q.id] : kind==="rem" ? !!state.rems.done[q.id] : kind==="obs" ? !!state.obs.done[q.id] : isDoneNow(q);
+  const done = kind==="care" ? !!state.care.done : kind==="wx" ? !!state.wx.done : kind==="daily" ? !!state.daily.done[q.id] : kind==="event" ? !!state.events.done[q.id] : kind==="rem" ? !!state.rems.done[q.id] : kind==="obs" ? !!state.obs.done[q.id] : isDoneNow(q);
   if(done){
     cls+=" done";
     right=`<button class="stamp" data-undo="${kind}:${q.id}" aria-label="${esc(q.t)} の達成を取り消す">CLEAR</button>`;
@@ -980,8 +985,8 @@ function questRow(q,kind,now){
     if(s.st==="locked"){cls+=" locked";right=`<div class="wait">受注まで<br><span class="mono">${s.wait}</span></div>`}
     else if(s.st==="expired"){cls+=" expired";right=`<span class="expired-tag">期限切れ</span>`}
     else{right=`<button class="btn go" data-do="daily:${q.id}">達成</button>`;if(s.left)extra=`<span>のこり ${s.left}</span>`}
-  }else if(kind==="wx"){
-    right=`<button class="btn go" data-do="wx:wx">達成</button>`;
+  }else if(kind==="wx"||kind==="care"){
+    right=`<button class="btn go" data-do="${kind}:${kind}">達成</button>`;
   }else if(kind==="rem"||kind==="obs"){
     right=`<button class="btn go" data-do="${kind}:${q.id}">達成</button>`;
   }else if(kind==="event"){
@@ -993,6 +998,7 @@ function questRow(q,kind,now){
   const when = kind==="daily" ? `<span class="chip">${q.to?WINDOWS[q.w].n.replace(/〜.*$/,"〜"+(q.to>=24?q.to-24:q.to)+"時"):WINDOWS[q.w].n}</span>`
     : kind==="event" ? `<span class="chip">${multiDay(q)?(q.allDay?"終日 ":hm(q.start)+" ")+multiTxt(q,today()):(q.allDay?"終日":hm(q.start)+"〜"+hm(q.end))}</span>${q.shift?`<span class="chip rew">シフト</span>`:""}${q.days?`<span class="chip">達成 ${((state.multi[q.mkey]||{}).days||[]).length}/${q.days}日</span>`:""}`
     : kind==="wx" ? `<span class="chip">今日の天気</span>`
+    : kind==="care" ? `<span class="chip">ケア</span>`
     : kind==="obs" ? `${q.overdue&&!done?`<span class="chip expired-tag">期限切れ</span>`:q.due?`<span class="chip">${remDueLabel(q)}</span>`:q.inDaily?`<span class="chip">今日のノート</span>`:""}<span>${esc(q.file||"")}</span>`
     : kind==="rem" ? `${q.overdue&&!done?`<span class="chip expired-tag">期限切れ</span>`:`<span class="chip">${remDueLabel(q)}</span>`}${q.list?`<span>${esc(q.list)}</span>`:""}`
     : `<span class="chip">${(REPEAT[q.r]||REPEAT.daily).chip}</span>`;
@@ -1009,6 +1015,7 @@ function questTab(now){
   const wk=Math.min(state.week.n,WEEK_GOAL);
   const customs=state.custom.filter(c=>!(c.r==="once"&&c.doneOn&&c.doneOn!==today()));
   return `
+  ${careSection(now)}
   ${wxSection(now)}
   <section class="win" aria-labelledby="h-daily">
     <h2 class="win-title" id="h-daily"><b>デイリーミッション</b><span class="mono">${dn} / ${qs.length}</span></h2>
@@ -1068,6 +1075,7 @@ function statusTab(){
     </div>
     <p class="note" style="margin:8px 0 0">1日にクエストを3つ以上達成すると、連続日数がのびます。</p>
   </section>
+  ${srrsSection()}
   ${healthSetupSection()}
   ${obsStatusSection()}
   <section class="win" aria-labelledby="h-rank">
@@ -1269,6 +1277,67 @@ function healthSetupSection(){
   </section>`;
 }
 
+/* ---------- ライフイベント(社会的再適応評価尺度 SRRS:Holmes & Rahe, 1967) ---------- */
+// [番号, 出来事, 点数(LCU)]。日本語は原典の項目を、いまの生活に合わせて言いかえたもの
+const SRRS = [
+  [1,"配偶者の死",100],[2,"離婚",73],[3,"夫婦の別居",65],[4,"刑務所などへの収監",63],[5,"近親者の死",63],
+  [6,"自分のけがや病気",53],[7,"結婚",50],[8,"解雇・失業",47],[9,"夫婦の和解",45],[10,"退職・引退",45],
+  [11,"家族の健康状態の変化",44],[12,"妊娠",40],[13,"性的な悩み",39],[14,"家族が増える(出産・同居など)",39],
+  [15,"仕事上の大きな変化(合併・倒産など)",39],[16,"経済状態の大きな変化",38],[17,"親しい友人の死",37],
+  [18,"転職・仕事の種類が変わる",36],[19,"配偶者・パートナーとの口論の回数の変化",35],[20,"大きな借金・ローン(住宅など)",31],
+  [21,"借金・ローンが返せなくなる",30],[22,"仕事上の責任の変化(昇進・降格・異動)",29],[23,"子どもが家を離れる",29],
+  [24,"義理の家族とのトラブル",29],[25,"大きな成功・個人的な達成",28],[26,"配偶者・パートナーが働き始める/仕事をやめる",26],
+  [27,"入学・卒業",26],[28,"生活環境の変化(新築・改築・環境の悪化)",25],[29,"個人的な習慣を変える",24],
+  [30,"上司とのトラブル",23],[31,"勤務時間・働き方の変化",20],[32,"引っ越し",20],[33,"転校",20],
+  [34,"趣味・レクリエーションの変化",19],[35,"宗教活動の変化",19],[36,"付き合い・社会活動の変化",18],
+  [37,"少額の借金・ローン(車・家電など)",17],[38,"睡眠習慣の変化",16],[39,"家族が集まる回数の変化",15],
+  [40,"食習慣の変化",15],[41,"長い休み・旅行",13],[42,"年末年始などの大きな行事(原典ではクリスマス)",12],[43,"軽い法律違反(交通違反など)",11]
+];
+function srrsRecent(){
+  const lim=parseYmd(today());lim.setFullYear(lim.getFullYear()-1);const from=ymd(lim);
+  return state.lifeEvents.filter(e=>e.date>from&&e.date<=today()).sort((a,b)=>b.date<a.date?-1:1);
+}
+function srrsScore(){return srrsRecent().reduce((a,e)=>a+((SRRS.find(x=>x[0]===e.n)||[0,"",0])[2]),0)}
+function srrsBand(sc){
+  if(sc>=300)return{key:"high",label:"高め",color:"var(--danger)",text:"大きな変化が重なっています。ふだんより休息を多めにとって、ひとりで抱えこまずに、身近な人や専門家に話すことも考えてみてください。"};
+  if(sc>=150)return{key:"mid",label:"中程度",color:"var(--gold)",text:"変化が続いています。睡眠や食事をととのえて、ケアクエストで心と体を休めましょう。"};
+  return{key:"low",label:"低め",color:"var(--c-bond)",text:"いまのところ、変化による負担は大きくなさそうです。"};
+}
+// 合計が150点以上のとき、毎日1つ出る「ケアクエスト」
+const CARE_POOL=[["10分、なにもしない時間をとる","mind"],["湯船にゆっくりつかる","body"],["信頼できる人に、話を聞いてもらう","bond"],
+  ["いつもより30分早く寝る","body"],["好きな音楽を1曲、目をとじて聴く","mind"],["散歩しながら、ゆっくり深呼吸する","mind"],["あたたかい飲み物で、ひと休みする","body"]];
+function careQuest(){
+  if(srrsScore()<150)return null;
+  const c=CARE_POOL[hash("care"+today())%CARE_POOL.length];
+  return {id:"care",t:c[0],s:c[1],d:1};
+}
+function careSection(now){
+  const q=careQuest();if(!q)return"";
+  return `<section class="win" aria-labelledby="h-care"><h2 class="win-title" id="h-care"><b>🌿 ケアクエスト</b><span>ライフイベント ${srrsScore()}点</span></h2>
+    <ul class="qlist">${questRow(q,"care",now)}</ul>
+    <p class="note" style="margin:6px 0 0">最近の大きな変化(SRRSの合計が150点以上)にあわせて、休むためのクエストが出ています。</p></section>`;
+}
+function srrsSection(){
+  const sc=srrsScore(),band=srrsBand(sc),rec=srrsRecent();
+  const pct=Math.min(100,sc/400*100);
+  return `<section class="win" aria-labelledby="h-srrs">
+    <h2 class="win-title" id="h-srrs"><b>ライフイベント</b><span>過去12か月</span></h2>
+    <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b class="mono" style="font-size:30px;font-weight:400">${sc}</b><span style="color:var(--dim)">点</span>
+      <span class="chip" style="color:${band.color};border-color:${band.color}">負担の目安:${band.label}</span></div>
+    <div style="position:relative;margin:8px 0 4px"><div class="bar" style="height:12px"><i style="width:${pct}%;background:${band.color}"></i></div>
+      <div class="mono" style="position:relative;height:14px;font-size:10px;color:var(--dim);margin-top:3px">${[[0,"0"],[37.5,"150"],[75,"300"],[100,"400+"]].map(([x,l])=>`<span style="position:absolute;left:${x}%;transform:translateX(${x===0?0:x===100?-100:-50}%)">${l}</span>`).join("")}</div></div>
+    <p class="note" style="margin:4px 0 8px">${band.text}</p>
+    ${rec.length?`<ul class="log">${rec.map(e=>{const it=SRRS.find(x=>x[0]===e.n)||[0,"(不明)",0];return `<li><span>${esc(it[1])} <span class="rew mono">${it[2]}</span></span><span style="display:flex;gap:8px;align-items:center"><time class="mono">${e.date.slice(5).replace("-","/")}</time><button class="btn ghost small" data-lifedel="${e.id}" aria-label="${esc(it[1])} を消す">消す</button></span></li>`}).join("")}</ul>`
+      :`<div class="empty">この1年で経験した大きな出来事を記録すると、合計点が出ます。</div>`}
+    ${ui.lifeAdd?`<form class="form" id="life-form">
+      <label for="life-n">出来事<select id="life-n">${SRRS.map(([n,t,p])=>`<option value="${n}">${p}点 ・ ${esc(t)}</option>`).join("")}</select></label>
+      <label for="life-date">いつ<input id="life-date" type="date" value="${today()}" max="${today()}" required></label>
+      <div class="row"><button class="btn ghost" type="button" id="cancel-life">やめる</button><button class="btn go" type="submit">記録する</button></div>
+    </form>`:`<div style="margin-top:8px"><button class="btn" id="open-life">＋ 出来事を記録</button></div>`}
+    <p class="note" style="margin:8px 0 0">社会的再適応評価尺度(SRRS、Holmes & Rahe 1967)にもとづく目安です。うれしい出来事も「変化」として点数に入ります。病気の診断ではありません。体や心の調子が心配なときは、医療機関や身近な人に相談してください。</p>
+  </section>`;
+}
+
 /* ---------- 日記 ---------- */
 function diaryText(ds){return (state.diary[ds]&&state.diary[ds].text)||""}
 function diaryEditor(ds,title){
@@ -1382,6 +1451,8 @@ function complete(kind,id){
   if(kind==="daily"){
     q=POOL.find(p=>p.id===id);if(!q||state.daily.done[id])return;
     if(questStateFor(q,new Date()).st!=="open")return;
+  }else if(kind==="care"){
+    q=careQuest();if(!q||state.care.done)return;
   }else if(kind==="wx"){
     q=wxQuest();if(!q||state.wx.done)return;
   }else if(kind==="obs"){
@@ -1406,7 +1477,7 @@ function complete(kind,id){
       else lines.push(`全${q.days}日のうち ${m.days.length}日ぶん クリア。`)}}
   else if(kind==="rem"){state.rems.done[id]=true;pushOp({type:"rem",id,done:true})}
   else if(kind==="obs"){state.obs.done[id]=true;pushOp({type:"obsTask",id,done:true})}
-  else if(kind==="wx"){state.wx.done=true}else q.doneOn=today();
+  else if(kind==="wx"){state.wx.done=true}else if(kind==="care"){state.care.done=true}else q.doneOn=today();
   if(countDone(1))lines.push(`連続 ${state.streak}日目！ よくがんばった。`);
   if(kind==="daily"&&!state.daily.bonus&&state.daily.ids.every(i=>state.daily.done[i])){
     state.daily.bonus=true;lv=grant(ALL_CLEAR.xp,ALL_CLEAR.g,null,"デイリー オールクリア")||lv;
@@ -1429,6 +1500,7 @@ function undo(kind,id){
   else if(kind==="rem"){q=remQuests(true).find(r=>r.id===id);if(!q||!state.rems.done[id])return;delete state.rems.done[id];pushOp({type:"rem",id,done:false})}
   else if(kind==="obs"){q=obsQuests().find(r=>r.id===id);if(!q||!state.obs.done[id])return;delete state.obs.done[id];pushOp({type:"obsTask",id,done:false})}
   else if(kind==="wx"){q=wxQuest();if(!q||!state.wx.done)return;state.wx.done=false}
+  else if(kind==="care"){q=careQuest();if(!q||!state.care.done)return;state.care.done=false}
   else{q=state.custom.find(c=>c.id===id);if(!q||!isDoneNow(q))return;sameDay=q.doneOn===today();q.doneOn=""}
   const D=DIFF[q.d];grant(D.xp,D.g,q.s,q.t,-1);countDone(-1,sameDay);
   if(state.week.bonus&&state.week.n<WEEK_GOAL){state.week.bonus=false;grant(WEEK_BONUS.xp,WEEK_BONUS.g,null,"ウィークリー達成",-1)}
@@ -1441,6 +1513,7 @@ app.addEventListener("click",e=>{
   if(b.dataset.do){const[k,i]=b.dataset.do.split(":");complete(k,i);return}
   if(b.dataset.undo){const[k,i]=b.dataset.undo.split(":");undo(k,i);return}
   if(b.dataset.view){state.viewMode=b.dataset.view;save();render();say([b.dataset.view==="full"?"次から 全画面で開くよ。":"次から シートで開くよ。","一度閉じて、ウィジェットから開き直してね。"]);return}
+  if(b.dataset.lifedel){state.lifeEvents=state.lifeEvents.filter(e=>e.id!==b.dataset.lifedel);save();render();return}
   if(b.dataset.note){ui.noteOpen=ui.noteOpen===b.dataset.note?"":b.dataset.note;render();return}
   if(b.dataset.diary!==undefined){state.obsDiary=b.dataset.diary==="1";save();render();say([state.obsDiary?"冒険日記を オンにした。":"冒険日記を オフにした。"]);return}
   if(b.dataset.remedit){const q=remQuests(true).find(r=>r.id===b.dataset.remedit);if(!q)return;
@@ -1481,6 +1554,8 @@ app.addEventListener("click",e=>{
     case"make-wishlist":wishListCreating=true;pushOp({type:"makeWishList"});render();break;
     case"open-pay":ui.addPay=true;render();document.getElementById("pay-title").focus();break;
     case"cancel-pay":ui.addPay=false;render();break;
+    case"open-life":ui.lifeAdd=true;render();break;
+    case"cancel-life":ui.lifeAdd=false;render();break;
     case"toggle-hs":ui.hsOpen=!ui.hsOpen;render();break;
     case"save-diary":{const ta=document.getElementById("diary-text");if(ta)saveDiary(ta.dataset.ds,ta.value);break}
     case"open-rem":ui.addRem=true;render();document.getElementById("rem-title").focus();break;
@@ -1559,6 +1634,14 @@ app.addEventListener("submit",e=>{
       WISHES=WISHES.concat([{id:"pending"+Date.now(),title:t,price:c,priced:true}]);
       ui.addReward=false;render();say([`「${t}」を リストに追加した！`]);
     }else{state.rewards.push({id:uid(),t:t.slice(0,40),c});ui.addReward=false;save();render();}
+  }else if(e.target.id==="life-form"){
+    const n=Number(document.getElementById("life-n").value),date=document.getElementById("life-date").value||today();
+    const it=SRRS.find(x=>x[0]===n);if(!it)return;
+    const before=srrsScore();
+    state.lifeEvents.push({id:uid(),n,date:date>today()?today():date,at:Date.now()});
+    ui.lifeAdd=false;save();render();
+    const after=srrsScore();
+    say([`「${it[1]}」(${it[2]}点)を 記録した。`,after>=150&&before<150?"休むための ケアクエストが 出るようになったよ。":`過去12か月の合計は ${after}点。`]);
   }else if(e.target.id==="pay-form"){
     const title=document.getElementById("pay-title").value.trim();if(!title)return;
     const ds=document.getElementById("pay-date").value||today();
