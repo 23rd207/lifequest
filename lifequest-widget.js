@@ -9,6 +9,7 @@ const WEEK_GOAL = 20;
 const C = {
   sky: new Color("#0b0e2b"), ink: new Color("#f3f1ff"), dim: new Color("#a3a8dc"),
   gold: new Color("#ffd45e"), danger: new Color("#ff7b86"),
+  cyan: new Color("#5fd4ff"), glass: new Color("#ffffff", 0.07), glassLine: new Color("#ffffff", 0.12), pillBg: new Color("#ffffff", 0.10),
   body: new Color("#ff8a6b"), int: new Color("#6fbcff"), mind: new Color("#bb93ff"), bond: new Color("#6fe0a6")
 };
 const WINDOWS = { morning:{from:5,to:11}, night:{from:19,to:28} };
@@ -784,30 +785,61 @@ function mixHex(a, b, t){
   const A = p(a), B = p(b);
   return "#" + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, "0")).join("");
 }
-// 星空のグラデーション + 白い二重枠
+// 背景:夜空 + オーロラの光 + 星 + 細い光の枠と、四隅の金色のL字(ゲームのHUD風)
 function windowBackground(family){
   const [W, H] = WIDGET_SIZE[family] || WIDGET_SIZE.medium;
   const ctx = new DrawContext(); ctx.size = new Size(W, H); ctx.opaque = true; ctx.respectScreenScale = true;
-  const bands = 48;
+  const bands = 56;
   for (let i = 0; i < bands; i++) {
-    ctx.setFillColor(new Color(mixHex("#1a1f63", "#070a24", i / (bands - 1))));
+    ctx.setFillColor(new Color(mixHex("#141a52", "#05071a", i / (bands - 1))));
     ctx.fillRect(new Rect(0, Math.floor(H * i / bands), W, Math.ceil(H / bands) + 1));
   }
-  // 星(毎回同じ並びになるように固定の乱数)
-  let seed = 7;
-  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-  for (let i = 0; i < Math.round(W * H / 900); i++) {
-    const x = rnd() * W, y = rnd() * H, big = rnd() > 0.85;
-    ctx.setFillColor(new Color("#ffffff", big ? 0.55 : 0.25 + rnd() * 0.2));
-    ctx.fillRect(new Rect(Math.round(x), Math.round(y), big ? 2 : 1, big ? 2 : 1));
-  }
-  // ウィンドウの枠:外側の白い太線と、内側の細い線
-  const frame = (inset, width, color, r) => {
-    const p = new Path(); p.addRoundedRect(new Rect(inset, inset, W - inset * 2, H - inset * 2), r, r);
-    ctx.addPath(p); ctx.setStrokeColor(color); ctx.setLineWidth(width); ctx.strokePath();
+  // オーロラ:薄い楕円を重ねて、ぼんやり光らせる
+  const glow = (cx, cy, rx, ry, hex, alpha) => {
+    const n = 40;
+    for (let k = n; k >= 1; k--) {
+      const f = Math.pow(k / n, 0.8);
+      ctx.setFillColor(new Color(hex, alpha / n));
+      ctx.fillEllipse(new Rect(cx - rx * f, cy - ry * f, rx * 2 * f, ry * 2 * f));
+    }
   };
-  frame(6, 3, new Color("#f3f1ff"), 14);
-  frame(10.5, 1, new Color("#a3a8dc", 0.45), 10);
+  glow(W * 0.85, H * 0.05, W * 0.55, H * 0.55, "#7b5cff", 0.55);
+  glow(W * 0.1, H * 0.95, W * 0.5, H * 0.45, "#1fb6ff", 0.35);
+  // 星(毎回同じ並びになるように固定の乱数)
+  let seed = 11;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  for (let i = 0; i < Math.round(W * H / 1100); i++) {
+    const x = rnd() * W, y = rnd() * H, big = rnd() > 0.88;
+    ctx.setFillColor(new Color("#ffffff", big ? 0.6 : 0.18 + rnd() * 0.2));
+    ctx.fillRect(new Rect(Math.round(x), Math.round(y), big ? 1.6 : 1, big ? 1.6 : 1));
+  }
+  // 細い光の枠
+  const p = new Path(); p.addRoundedRect(new Rect(5, 5, W - 10, H - 10), 16, 16);
+  ctx.addPath(p); ctx.setStrokeColor(new Color("#a9b4ff", 0.28)); ctx.setLineWidth(1); ctx.strokePath();
+  // 四隅の金色のL字
+  const L = 14, o = 5;
+  const corner = pts => { const q = new Path(); q.addLines(pts.map(([x, y]) => new Point(x, y))); ctx.addPath(q); ctx.setStrokeColor(new Color("#ffd45e", 0.95)); ctx.setLineWidth(2.2); ctx.strokePath(); };
+  corner([[o, o + L], [o, o], [o + L, o]]);
+  corner([[W - o - L, o], [W - o, o], [W - o, o + L]]);
+  corner([[o, H - o - L], [o, H - o], [o + L, H - o]]);
+  corner([[W - o - L, H - o], [W - o, H - o], [W - o, H - o - L]]);
+  return ctx.getImage();
+}
+// 光るグラデーションのバー
+function glowBar(ratio, width, height, c1, c2){
+  const ctx = new DrawContext(); ctx.size = new Size(width, height); ctx.opaque = false; ctx.respectScreenScale = true;
+  const r = height / 2;
+  const track = new Path(); track.addRoundedRect(new Rect(0, 0, width, height), r, r);
+  ctx.addPath(track); ctx.setFillColor(new Color("#ffffff", 0.13)); ctx.fillPath();
+  const fw = Math.max(0, Math.min(1, ratio)) * width;
+  if (fw > 0) {
+    const steps = Math.max(1, Math.round(fw / 2));
+    for (let i = 0; i < steps; i++) {
+      ctx.setFillColor(new Color(mixHex(c1, c2, steps > 1 ? i / (steps - 1) : 0)));
+      ctx.fillRect(new Rect(i * fw / steps, 0, fw / steps + 0.6, height));
+    }
+    ctx.setFillColor(new Color("#ffffff", 0.35)); ctx.fillRect(new Rect(Math.min(r / 2, fw), 1, Math.max(0, fw - r), Math.max(1, height * 0.22)));
+  }
   return ctx.getImage();
 }
 // ドット絵風のバー(目盛り付き)
@@ -860,20 +892,38 @@ async function buildWidget(){
     w.backgroundColor = C.sky;
     try { w.backgroundImage = windowBackground(family); } catch(e) {}
   }
-  w.setPadding(16, 18, 15, 18);
+  w.setPadding(14, 16, 13, 16);
   w.url = URLScheme.forRunningScript();
   w.refreshAfterDate = new Date(now.getTime() + 10*60e3);
 
+  // 数字・英字は丸みのある書体に(日本語はiPhoneの標準の書体のまま)
+  const RF = (size, bold) => {
+    try { return bold ? Font.boldRoundedSystemFont(size) : Font.mediumRoundedSystemFont(size); }
+    catch(e) { return bold ? Font.boldSystemFont(size) : Font.systemFont(size); }
+  };
   function text(stack, str, size, color, bold){
     const el = stack.addText(str);
-    el.font = bold ? Font.boldSystemFont(size) : Font.systemFont(size);
+    el.font = RF(size, bold);
     el.textColor = color; el.lineLimit = 1; el.minimumScaleFactor = 0.7;
     return el;
   }
-  function bar(stack, ratio, size, color){
+  // ガラスのような半透明パネル
+  function glass(parent, padV, padH){
+    const g = parent.addStack();
+    g.backgroundColor = C.glass; g.cornerRadius = 12; g.borderColor = C.glassLine; g.borderWidth = 1;
+    g.setPadding(padV ?? 7, padH ?? 9, padV ?? 7, padH ?? 9);
+    return g;
+  }
+  // 角丸のバッジ
+  function pill(parent, str, fg, bg, size, bold){
+    const p = parent.addStack(); p.backgroundColor = bg || C.pillBg; p.cornerRadius = 7; p.setPadding(2, 7, 2, 7);
+    const t = p.addText(str); t.font = RF(size || 11, bold !== false); t.textColor = fg || C.ink; t.lineLimit = 1; t.minimumScaleFactor = 0.7;
+    return p;
+  }
+  function bar(stack, ratio, size, c1, c2){
     try {
-      const wdt = Math.round(size * 9), hgt = Math.max(8, Math.round(size * 1.1));
-      const im = stack.addImage(pixelBar(ratio, wdt, hgt, color || C.gold)); im.imageSize = new Size(wdt, hgt);
+      const wdt = Math.round(size * 9), hgt = Math.max(6, Math.round(size * 0.8));
+      const im = stack.addImage(glowBar(ratio, wdt, hgt, c1 || "#ffd45e", c2 || "#ff7a3c")); im.imageSize = new Size(wdt, hgt);
     } catch(e) {
       const cells = 10, n = Math.round(Math.max(0, Math.min(1, ratio))*cells);
       const el = stack.addText("■".repeat(n) + "□".repeat(cells-n));
@@ -881,25 +931,29 @@ async function buildWidget(){
     }
   }
   function statusBlock(stack){
-    const top = stack.addStack(); top.centerAlignContent(); top.spacing = 6;
+    const top = stack.addStack(); top.centerAlignContent(); top.spacing = 7;
     const im = top.addImage(spriteImage(lookKey(st, L.lv), 3)); im.imageSize = new Size(44, 44);
-    const nm = top.addStack(); nm.layoutVertically();
-    text(nm, titleFor(L.lv), 11, C.gold);
+    const nm = top.addStack(); nm.layoutVertically(); nm.spacing = 1;
+    text(nm, titleFor(L.lv), 10, C.cyan, true);
     text(nm, st && st.name ? st.name : "ゆうしゃ", 16, C.ink, true);
-    const row = stack.addStack(); row.centerAlignContent();
-    text(row, "Lv ", 10, C.dim); text(row, String(L.lv), 22, C.ink, true);
-    bar(stack, L.cur/L.need, 8);
-    stack.addSpacer(3);
-    text(stack, (st ? st.gold || 0 : 0)+"G ・ 連続"+streak+"日", 12, C.dim);
+    stack.addSpacer(5);
+    const row = stack.addStack(); row.centerAlignContent(); row.spacing = 6;
+    pill(row, "Lv " + L.lv, new Color("#221a00"), C.gold, 12);
+    bar(row, L.cur/L.need, 6);
+    stack.addSpacer(5);
+    const chips = stack.addStack(); chips.centerAlignContent(); chips.spacing = 5;
+    pill(chips, "🪙" + (st ? st.gold || 0 : 0), C.gold, null, 10);
+    pill(chips, "🔥" + streak, C.ink, null, 10);
+    stack.addSpacer(4);
     const rr = stack.addStack(); rr.centerAlignContent();
-    text(rr, "リセット ", 12, C.dim);
-    const d = rr.addDate(nextReset(now)); d.applyTimerStyle(); d.font = Font.mediumMonospacedSystemFont(12); d.textColor = C.ink;
+    text(rr, "RESET ", 9, C.dim, true);
+    const d = rr.addDate(nextReset(now)); d.applyTimerStyle(); d.font = Font.mediumMonospacedSystemFont(11); d.textColor = C.ink;
   }
   function questLine(stack, q){
     const s = done.has(q.id) ? "done" : questState(q, now);
-    const row = stack.addStack(); row.centerAlignContent(); row.spacing = 5;
-    text(row, { done:"✔", open:"▶", locked:"…", expired:"×" }[s], 13, { done:C.gold, open:C[q.s] || C.ink, locked:C.dim, expired:C.danger }[s], true);
-    text(row, q.t, 14, s === "open" ? C.ink : C.dim, s === "open");
+    const row = stack.addStack(); row.centerAlignContent(); row.spacing = 6;
+    text(row, { done:"✓", open:"◆", locked:"◇", expired:"×" }[s], 10, { done:C.gold, open:C[q.s] || C.ink, locked:C.dim, expired:C.danger }[s], true);
+    text(row, q.t, 13, s === "open" ? C.ink : C.dim, s === "open");
   }
 
   function eventLine(stack, e, size){
@@ -907,42 +961,52 @@ async function buildWidget(){
     const shift = SHIFT_RE.test(e.title || "") || SHIFT_RE.test(e.cal || "");
     const isDone = !!evDone[evId(e)];
     const nowIn = !e.allDay && e.start <= now.getTime() && e.end > now.getTime();
-    const tm = row.addText(e.allDay ? "終日 " : hm(e.start));
-    tm.font = Font.mediumMonospacedSystemFont(size - 1); tm.textColor = shift ? C.gold : (nowIn ? C.ink : C.dim); tm.lineLimit = 1;
-    text(row, (isDone ? "✔ " : "") + (e.title || "予定"), size, isDone ? C.dim : C.ink, !isDone && nowIn);
+    // 時刻はバッジに。いま進行中は水色、シフトは金色
+    pill(row, e.allDay ? "終日" : hm(e.start), shift ? new Color("#221a00") : nowIn ? new Color("#04202e") : C.ink,
+      shift ? C.gold : nowIn ? C.cyan : C.pillBg, size - 3);
+    text(row, (isDone ? "✓ " : "") + (e.title || "予定"), size, isDone ? C.dim : C.ink, !isDone && nowIn);
     const ul = untilLabel(e); if (ul) text(row, ul, size - 3, C.gold);
-    if (nowIn) text(row, "いま", 11, C.gold, true);
+    if (nowIn) text(row, "NOW", 9, C.cyan, true);
   }
   function eventsBlock(max, size){
     const head = w.addStack(); head.centerAlignContent();
     const small = family === "small";
-    text(head, small ? "▶ 今日" : "▶ 今日の予定", 13, C.gold, true);
+    text(head, "◆", 10, C.cyan, true); head.addSpacer(5);
+    text(head, small ? "TODAY" : "今日の予定", 13, C.ink, true);
     head.addSpacer();
     const d = new Date(now);
-    const wxs = wx ? wxIcon(wx.now.code) + Math.round(wx.now.t) + "°" : "";
-    text(head, small ? wxs : (d.getMonth()+1) + "/" + d.getDate() + "(" + "日月火水木金土"[d.getDay()] + ")" + (wxs ? "  " + wxs : ""), 12, C.dim);
-    w.addSpacer(4);
+    const wxs = wx ? wxIcon(wx.now.code) + " " + Math.round(wx.now.t) + "°" : "";
+    if (!small) { text(head, (d.getMonth()+1) + "/" + d.getDate() + " " + "日月火水木金土"[d.getDay()], 11, C.dim, true); if (wxs) head.addSpacer(6); }
+    if (wxs) pill(head, wxs, C.ink, null, 11);
+    w.addSpacer(6);
     if (!upcoming.length) {
       text(w, evsRaw ? "今日はこのあと予定なし" : "タップしてカレンダーを許可してください", size - 1, C.dim);
       // 今日の予定がないときは、近々の予定を出す
       if (evsRaw && soon.length && family !== "large" && family !== "extraLarge") { w.addSpacer(2); soonLines(Math.max(1, max - 1)); }
     }
-    for (const e of upcoming.slice(0, max)) { eventLine(w, e, size); w.addSpacer(2); }
+    for (const e of upcoming.slice(0, max)) { eventLine(w, e, size); w.addSpacer(4); }
     if (upcoming.length > max) text(w, "ほか " + (upcoming.length - max) + "件", 11, C.dim);
   }
+  // 下のHUD:キャラ・Lvバッジ・EXPバー・デイリーのバッジ(ガラスのパネルの中)
   function footer(){
-    const row = w.addStack(); row.centerAlignContent(); row.spacing = 6;
+    const g = glass(w, 5, 8);
+    const row = g.addStack(); row.centerAlignContent(); row.spacing = 6;
     const im = row.addImage(spriteImage(lookKey(st, L.lv), 2)); im.imageSize = new Size(24, 24);
-    text(row, "Lv" + L.lv, 15, C.ink, true);
-    if (family !== "small") bar(row, L.cur/L.need, 8);
+    pill(row, "Lv " + L.lv, new Color("#221a00"), C.gold, 11);
+    if (family !== "small") bar(row, L.cur/L.need, 9);
     row.addSpacer();
-    text(row, (family === "small" ? "★" : "デイリー ") + nDone + "/" + quests.length, 13, nDone === quests.length ? C.gold : C.dim);
+    pill(row, (family === "small" ? "" : "DAILY ") + nDone + "/" + quests.length, nDone === quests.length ? new Color("#221a00") : C.ink,
+      nDone === quests.length ? C.gold : C.pillBg, 11);
   }
   function footer2(){
-    const row = w.addStack(); row.centerAlignContent(); row.spacing = 4;
-    text(row, (st ? st.gold || 0 : 0) + "G ・ 連続" + streak + "日" + (hToday && hToday.steps != null ? " ・ 👣" + hToday.steps.toLocaleString("ja-JP") : "") + (remsLeft.length ? " ・ リマインダー" + remsLeft.length : ""), 12, C.dim);
+    const row = w.addStack(); row.centerAlignContent(); row.spacing = 5;
+    pill(row, "🪙" + (st ? st.gold || 0 : 0), C.gold, null, 10);
+    pill(row, "🔥" + streak, C.ink, null, 10);
+    if (hToday && hToday.steps != null) pill(row, "👣" + hToday.steps.toLocaleString("ja-JP"), C.ink, null, 10);
+    if (remsLeft.length) pill(row, "!" + remsLeft.length, C.ink, new Color("#ff7b86", 0.35), 10);
     row.addSpacer();
-    const d = row.addDate(nextReset(now)); d.applyTimerStyle(); d.font = Font.mediumMonospacedSystemFont(12); d.textColor = C.dim; d.rightAlignText();
+    text(row, "RESET ", 8, C.dim, true);
+    const d = row.addDate(nextReset(now)); d.applyTimerStyle(); d.font = Font.mediumMonospacedSystemFont(11); d.textColor = C.dim; d.rightAlignText();
   }
 
   // 空いた行を埋めるための材料
@@ -963,13 +1027,15 @@ async function buildWidget(){
   const customsLeft = customs.filter(c => !c.done);
   function sectionTitle(str, right){
     const h = w.addStack(); h.centerAlignContent();
-    text(h, "▶ " + str, 12, C.gold, true); h.addSpacer();
-    if (right) text(h, right, 12, C.dim);
+    text(h, "◆", 9, C.cyan, true); h.addSpacer(5);
+    text(h, str, 12, C.ink, true); h.addSpacer();
+    if (right) text(h, right, 11, C.dim, true);
+    w.addSpacer(2);
   }
   function itemLine(mark, markColor, str, color){
     const row = w.addStack(); row.centerAlignContent(); row.spacing = 6;
-    text(row, mark, 13, markColor, true);
-    text(row, str, 14, color);
+    text(row, mark === "▶" ? "◆" : mark, 10, markColor, true);
+    text(row, str, 13, color);
   }
   function tomorrowLines(max){
     for (const e of tomorrow.slice(0, max)) {
@@ -1009,11 +1075,12 @@ async function buildWidget(){
     try { pays = (await loadPays()) || []; } catch(e) {}
     const d0 = days[0].date, d6 = days[6].date;
     const head = w.addStack(); head.centerAlignContent();
-    text(head, "▶ 1週間の予定", 13, C.gold, true);
+    text(head, "◆", 10, C.cyan, true); head.addSpacer(5);
+    text(head, "1週間の予定", 13, C.ink, true);
     head.addSpacer();
-    text(head, (d0.getMonth()+1) + "/" + d0.getDate() + "〜" + (d6.getMonth()+1) + "/" + d6.getDate(), 11, C.dim);
+    pill(head, (d0.getMonth()+1) + "/" + d0.getDate() + " – " + (d6.getMonth()+1) + "/" + d6.getDate(), C.ink, null, 10);
     w.addSpacer(family === "large" ? 6 : 3);
-    const perDay = family === "large" || family === "extraLarge" ? 2 : 1;
+    const perDay = family === "large" || family === "extraLarge" ? 3 : 1;
     const showDays = family === "small" ? 4 : 7;
     for (const [i, d] of days.slice(0, showDays).entries()) {
       const ds = ymd(d.date);
@@ -1022,17 +1089,19 @@ async function buildWidget(){
           shift: SHIFT_RE.test(e.title || "") || SHIFT_RE.test(e.cal || ""), cont: e.start < d.date.getTime() }))
         .concat(dayPays.map(p => ({ time: "支払", title: p.title, pay: true })));
       const row = w.addStack(); row.spacing = 6; row.topAlignContent();
+      // 今日の行だけ、ガラスのパネルで目立たせる
+      if (i === 0) { row.backgroundColor = C.glass; row.cornerRadius = 8; row.borderColor = C.glassLine; row.borderWidth = 1; row.setPadding(3, 6, 3, 6); }
       const lab = row.addStack(); lab.size = new Size(family === "small" ? 34 : 46, 0);
       const wd = d.date.getDay();
-      const lt = lab.addText(i === 0 ? "今日" : d.date.getDate() + " " + "日月火水木金土"[wd]);
-      lt.font = Font.boldSystemFont(family === "large" ? 13 : 12); lt.lineLimit = 1; lt.minimumScaleFactor = 0.7;
+      const lt = lab.addText(i === 0 ? "TODAY" : d.date.getDate() + " " + "日月火水木金土"[wd]);
+      lt.font = RF(family === "large" ? 13 : 12, true); lt.lineLimit = 1; lt.minimumScaleFactor = 0.7;
       lt.textColor = i === 0 ? C.gold : wd === 0 ? C.danger : wd === 6 ? C.int : C.ink;
       const col = row.addStack(); col.layoutVertically(); col.spacing = 1;
       if (!items.length) { text(col, "—", family === "large" ? 13 : 12, C.dim); }
       for (const it of items.slice(0, perDay)) {
         const r = col.addStack(); r.spacing = 5; r.centerAlignContent();
         const tm = r.addText(it.time); tm.font = Font.mediumMonospacedSystemFont(family === "large" ? 12 : 11);
-        tm.textColor = it.pay ? C.bond : it.shift ? C.gold : C.dim; tm.lineLimit = 1;
+        tm.textColor = it.pay ? C.bond : it.shift ? C.gold : C.cyan; tm.lineLimit = 1;
         text(r, (it.cont ? "(続き) " : "") + it.title, family === "large" ? 13 : 12, it.cont ? C.dim : C.ink);
       }
       if (items.length > perDay) text(col, "ほか" + (items.length - perDay) + "件", 10, C.dim);
@@ -1148,11 +1217,15 @@ async function buildWidget(){
       used += 1 + n;
     }
     w.addSpacer();
-    const main = w.addStack(); main.spacing = 12;
-    const left = main.addStack(); left.layoutVertically(); left.size = new Size(135, 0);
+    // プレイヤーとデイリーを、ガラスのパネル2枚に
+    const main = w.addStack(); main.spacing = 8;
+    const left = glass(main, 8, 9); left.layoutVertically(); left.size = new Size(128, 0);
     statusBlock(left);
-    const right = main.addStack(); right.layoutVertically(); right.spacing = 4;
-    text(right, "▶ デイリー " + nDone + "/" + quests.length, 12, C.gold, true);
+    const right = glass(main, 8, 9); right.layoutVertically(); right.spacing = 4;
+    const dh = right.addStack(); dh.centerAlignContent();
+    text(dh, "DAILY", 10, C.cyan, true); dh.addSpacer();
+    pill(dh, nDone + "/" + quests.length, nDone === quests.length ? new Color("#221a00") : C.ink, nDone === quests.length ? C.gold : C.pillBg, 10);
+    right.addSpacer(2);
     // 達成済み・期限切れは出さず、のこりのミッションだけ並べる
     const left5 = quests.filter(q => !done.has(q.id) && questState(q, now) !== "expired");
     if (!left5.length) text(right, nDone === quests.length ? "★ 全部クリア！" : "今日のミッションは おしまい", 14, nDone === quests.length ? C.gold : C.dim, true);
@@ -1177,11 +1250,12 @@ async function buildWidget(){
       text(gr, gold >= goal[2] ? "きせかえ「" + goal[1] + "」が買える！" : "きせかえ「" + goal[1] + "」まで あと" + (goal[2] - gold) + "G", 13, gold >= goal[2] ? C.gold : C.dim);
     }
     w.addSpacer();
-    const wk = w.addStack(); wk.centerAlignContent(); wk.spacing = 8;
-    text(wk, "ウィークリー " + Math.min(week, WEEK_GOAL) + "/" + WEEK_GOAL, 12, C.dim);
-    bar(wk, week/WEEK_GOAL, 9);
+    const wk = w.addStack(); wk.centerAlignContent(); wk.spacing = 7;
+    text(wk, "WEEKLY", 9, C.cyan, true);
+    bar(wk, week/WEEK_GOAL, 12, "#5fd4ff", "#9b7bff");
+    text(wk, Math.min(week, WEEK_GOAL) + "/" + WEEK_GOAL, 11, C.ink, true);
     wk.addSpacer();
-    text(wk, "連続" + streak + "日", 12, C.dim);
+    if (hToday && hToday.steps != null) pill(wk, "👣" + hToday.steps.toLocaleString("ja-JP"), C.ink, null, 10);
   }
   if (!st) text(w, "タップして冒険をはじめる", 11, C.dim);
   return w;
