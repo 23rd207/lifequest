@@ -240,6 +240,16 @@ button,input,select{font:inherit;color:inherit}
 @keyframes pop{from{transform:scale(.6)}to{transform:scale(1)}}
 .confirm{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.srrs-g{font-size:13px;margin:12px 0 4px;color:var(--dim);font-weight:700}
+.srrs-g .mono{color:var(--gold)}
+.srrs-list{list-style:none;margin:0;padding:0}
+.srrs-row{display:flex;align-items:center;gap:8px;padding:7px 2px;border-bottom:1px solid rgba(255,255,255,.07)}
+.srrs-row label{display:flex;align-items:center;gap:10px;flex:1 1 auto;min-width:0;cursor:pointer}
+.srrs-row input[type=checkbox]{width:20px;height:20px;flex:0 0 auto;accent-color:var(--gold)}
+.srrs-t{flex:1 1 auto;min-width:0}
+.srrs-row.on .srrs-t{font-weight:700}
+.srrs-date{flex:0 0 auto;width:118px;font-size:12px;padding:3px 4px}
+.srrs-sum{display:flex;flex-wrap:wrap;gap:6px}
 </style>
 
 </head>
@@ -1325,9 +1335,13 @@ function careSection(now){
     <ul class="qlist">${questRow(q,"care",now)}</ul>
     <p class="note" style="margin:6px 0 0">最近の大きな変化(SRRSの合計が150点以上)にあわせて、休むためのクエストが出ています。</p></section>`;
 }
+// チェックリストの分類
+const SRRS_GROUPS=[["家族・友人・パートナー",[1,2,3,5,7,9,11,12,14,17,19,23,24,26,39]],["仕事・学校",[8,10,15,18,22,25,27,30,31,33]],["お金",[16,20,21,37]],["健康・暮らし",[6,13,28,29,32,34,35,36,38,40,41,42]],["その他",[4,43]]];
+function srrsChecked(){const m={};srrsRecent().forEach(e=>{if(!m[e.n])m[e.n]=e});return m}
 function srrsSection(){
-  const sc=srrsScore(),band=srrsBand(sc),rec=srrsRecent();
+  const sc=srrsScore(),band=srrsBand(sc),chk=srrsChecked(),nChk=Object.keys(chk).length;
   const pct=Math.min(100,sc/400*100);
+  const row=([n,t,p])=>{const e=chk[n];return `<li class="srrs-row${e?" on":""}"><label><input type="checkbox" data-srrs="${n}" ${e?"checked":""}><span class="srrs-t">${esc(t)}</span><span class="rew mono">${p}</span></label>${e?`<input type="date" class="srrs-date" data-srrsdate="${n}" value="${e.date}" max="${today()}" aria-label="${esc(t)} の日付">`:""}</li>`};
   return `<section class="win" aria-labelledby="h-srrs">
     <h2 class="win-title" id="h-srrs"><b>ライフイベント</b><span>過去12か月</span></h2>
     <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b class="mono" style="font-size:30px;font-weight:400">${sc}</b><span style="color:var(--dim)">点</span>
@@ -1335,13 +1349,12 @@ function srrsSection(){
     <div style="position:relative;margin:8px 0 4px"><div class="bar" style="height:12px"><i style="width:${pct}%;background:${band.color}"></i></div>
       <div class="mono" style="position:relative;height:14px;font-size:10px;color:var(--dim);margin-top:3px">${[[0,"0"],[37.5,"150"],[75,"300"],[100,"400+"]].map(([x,l])=>`<span style="position:absolute;left:${x}%;transform:translateX(${x===0?0:x===100?-100:-50}%)">${l}</span>`).join("")}</div></div>
     <p class="note" style="margin:4px 0 8px">${band.text}</p>
-    ${rec.length?`<ul class="log">${rec.map(e=>{const it=SRRS.find(x=>x[0]===e.n)||[0,"(不明)",0];return `<li><span>${esc(it[1])} <span class="rew mono">${it[2]}</span></span><span style="display:flex;gap:8px;align-items:center"><time class="mono">${e.date.slice(5).replace("-","/")}</time><button class="btn ghost small" data-lifedel="${e.id}" aria-label="${esc(it[1])} を消す">消す</button></span></li>`}).join("")}</ul>`
-      :`<div class="empty">この1年で経験した大きな出来事を記録すると、合計点が出ます。</div>`}
-    ${ui.lifeAdd?`<form class="form" id="life-form">
-      <label for="life-n">出来事<select id="life-n">${SRRS.map(([n,t,p])=>`<option value="${n}">${p}点 ・ ${esc(t)}</option>`).join("")}</select></label>
-      <label for="life-date">いつ<input id="life-date" type="date" value="${today()}" max="${today()}" required></label>
-      <div class="row"><button class="btn ghost" type="button" id="cancel-life">やめる</button><button class="btn go" type="submit">記録する</button></div>
-    </form>`:`<div style="margin-top:8px"><button class="btn" id="open-life">＋ 出来事を記録</button></div>`}
+    ${ui.lifeAdd?`<p class="note" style="margin:0 0 6px">この1年にあったことに ✓ をつけてください。日付は変えられます(わからなければそのままでOK)。</p>
+      ${SRRS_GROUPS.map(([g,ns])=>{const n=ns.filter(x=>chk[x]).length;return `<h3 class="srrs-g">${esc(g)}${n?` <span class="mono">${n}</span>`:""}</h3><ul class="srrs-list">${ns.map(x=>row(SRRS.find(i=>i[0]===x))).join("")}</ul>`}).join("")}
+      <div style="margin-top:10px"><button class="btn go" id="cancel-life">チェックをおわる</button></div>`
+    :`${nChk?`<div class="srrs-sum">${Object.values(chk).map(e=>{const it=SRRS.find(x=>x[0]===e.n)||[0,"(不明)",0];return `<span class="chip">${esc(it[1])} <b class="mono">${it[2]}</b></span>`}).join("")}</div>`
+        :`<div class="empty">チェックリストで、この1年にあった出来事に ✓ をつけると合計点が出ます。</div>`}
+      <div style="margin-top:8px"><button class="btn" id="open-life">☑ チェックリストを開く <span class="mono">${nChk}/${SRRS.length}</span></button></div>`}
     <p class="note" style="margin:8px 0 0">社会的再適応評価尺度(SRRS、Holmes & Rahe 1967)にもとづく目安です。うれしい出来事も「変化」として点数に入ります。病気の診断ではありません。体や心の調子が心配なときは、医療機関や身近な人に相談してください。</p>
   </section>`;
 }
@@ -1594,6 +1607,22 @@ app.addEventListener("click",e=>{
 /* 日記は入力欄から離れたときにも自動で保存 */
 app.addEventListener("focusout",e=>{if(e.target.id==="diary-text")saveDiary(e.target.dataset.ds,e.target.value,true)});
 /* 開始時刻を入れたら、終了時刻を1時間後にそろえる */
+// ライフイベントのチェックリスト
+app.addEventListener("change",e=>{
+  const t=e.target;
+  if(t.dataset&&t.dataset.srrs){
+    const n=Number(t.dataset.srrs),it=SRRS.find(x=>x[0]===n);if(!it)return;
+    const before=srrsScore(),y=window.scrollY;
+    if(t.checked){if(!srrsChecked()[n])state.lifeEvents.push({id:uid(),n,date:today(),at:Date.now()})}
+    else{const ids=new Set(srrsRecent().filter(x=>x.n===n).map(x=>x.id));state.lifeEvents=state.lifeEvents.filter(x=>!ids.has(x.id))}
+    save();render();window.scrollTo(0,y);
+    const after=srrsScore();
+    if(after>=150&&before<150)say(["休むための ケアクエストが 出るようになったよ。"]);
+  }else if(t.dataset&&t.dataset.srrsdate){
+    const n=Number(t.dataset.srrsdate),e0=srrsChecked()[n];if(!e0||!t.value)return;
+    const ev=state.lifeEvents.find(x=>x.id===e0.id);if(ev){ev.date=t.value>today()?today():t.value;save();}
+  }
+});
 app.addEventListener("input",e=>{
   if(e.target.id!=="ev-start")return;
   const end=document.getElementById("ev-end");if(!end||!e.target.value)return;
