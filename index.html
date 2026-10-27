@@ -638,6 +638,8 @@ function askName(){
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 let tab="quest";
 try{tab=sessionStorage.getItem("lq.tab")||"quest"}catch(e){}
+// ウィジェットから開いたときは、そのウィジェットに合ったタブ(「下」「週」→こよみ)
+if(window.__LQ_TAB__)tab=window.__LQ_TAB__;
 let ui={lifeAdd:false,editRem:"",remDel:false,hsOpen:false,noteOpen:"",remAll:false,lastCal:"",addPay:false,editEv:"",delConfirm:false,buyConfirm:"",priceEdit:"",addRem:false,remDue:"today",remHigh:"0",calMonth:"",calSel:"",addEvent:false,evAllDay:false,copyBox:"",importOpen:false,addQuest:false,addReward:false,qStat:"body",qDiff:2,qRep:"daily",confirmReset:false};
 const app=document.getElementById("app");
 

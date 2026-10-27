@@ -627,7 +627,9 @@ async function openGame(){
   const js = v => JSON.stringify(v).replace(/</g, "\\u003c");
   const weather = cachedWeather();
   const healthToday = loadHealth()[ymd(gameDate(new Date()))] || null;
-  const boot = "<script>window.__LQ_HOST__='scriptable';window.__LQ_WEATHER__=" + js(weather) + ";window.__LQ_HEALTH__=" + js(healthToday)
+  const qp = typeof args !== "undefined" && args.queryParameters ? args.queryParameters : {};
+  const openTab = /^(quest|status|cal|shop)$/.test(qp.tab || "") ? qp.tab : "";
+  const boot = "<script>window.__LQ_HOST__='scriptable';window.__LQ_TAB__=" + js(openTab) + ";window.__LQ_WEATHER__=" + js(weather) + ";window.__LQ_HEALTH__=" + js(healthToday)
     + ";window.__LQ_STATE__=" + js(saved)
     + ";window.__LQ_EVENTS__=" + js(events) + ";window.__LQ_MONTH__=" + js(month)
     + ";window.__LQ_MONTHRANGE__=" + js(monthRange().map(d => d.getTime()))
@@ -920,7 +922,9 @@ async function buildWidget(){
     try { w.backgroundImage = windowBackground(family, part); } catch(e) {}
   }
   w.setPadding(14, 16, 13, 16);
-  w.url = URLScheme.forRunningScript();
+  // タップで開くタブ:「下」「週」はこよみ、それ以外はクエスト
+  const tapParam = String((typeof args !== "undefined" && args.widgetParameter) || "").trim();
+  w.url = URLScheme.forRunningScript() + (/週|week|^(下|bottom)$/i.test(tapParam) ? "&tab=cal" : "");
   w.refreshAfterDate = new Date(now.getTime() + 5*60e3); // 実際にいつ更新するかはiPhoneが決める
 
   // 数字・英字は丸みのある書体に(日本語はiPhoneの標準の書体のまま)
