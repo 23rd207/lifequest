@@ -1276,8 +1276,132 @@ async function buildWidget(){
   return w;
 }
 
+/* ---- 壁紙(ステータス画面) ----
+   ショートカットで「壁紙」を渡して実行すると、ステータス画面の画像を返す。
+   上はロック画面の時計とウィジェット、下はライト・カメラのボタン用に空けてある。 */
+async function buildWallpaper(){
+  const now = new Date(), t = today(now);
+  let st = null; try { st = JSON.parse(loadSave() || "null"); } catch(e) {}
+  const L = levelInfo(st ? st.xp || 0 : 0);
+  const ids = st && st.daily && st.daily.date === t && st.daily.ids && st.daily.ids.length ? st.daily.ids : dailyFor(t);
+  const done = new Set(st && st.daily && st.daily.date === t ? Object.keys(st.daily.done || {}) : []);
+  const quests = ids.map(id => POOL.find(p => p.id === id)).filter(Boolean);
+  const nDone = quests.filter(q => done.has(q.id)).length;
+  const evs = (await todayEvents()) || [];
+  const evDone = st && st.events && st.events.date === t ? st.events.done || {} : {};
+  const evId = e => "e" + hash(String(e.id) + "|" + e.start).toString(36);
+  const upcoming = evs.filter(e => e.allDay || e.end > now.getTime())
+    .sort((a,b) => (a.allDay ? 0 : 1) - (b.allDay ? 0 : 1) || a.start - b.start);
+  const wx = await getWeather(60);
+  const hToday = loadHealth()[t] || null;
+  const streakAlive = st && st.streak && (st.streakDay === t || st.streakDay === ymd(new Date(gameDate(now).getTime() - 864e5)));
+  const streak = streakAlive ? st.streak : 0;
+
+  // 画面サイズ(ポイント)。respectScreenScale で実機の解像度で書き出す
+  let W = 393, H = 852;
+  try { const s = Device.screenSize(); W = Math.min(s.width, s.height); H = Math.max(s.width, s.height); } catch(e) {}
+  const ctx = new DrawContext(); ctx.size = new Size(W, H); ctx.opaque = true; ctx.respectScreenScale = true;
+  const col = (h, a) => new Color(h, a == null ? 1 : a);
+  // 背景:夜空のグラデーション + オーロラ + 星
+  for (let i = 0; i < 90; i++) { ctx.setFillColor(col(mixHex("#161c58", "#04050f", i / 89))); ctx.fillRect(new Rect(0, Math.floor(H * i / 90), W, Math.ceil(H / 90) + 1)); }
+  const glow = (cx, cy, rx, ry, hex, alpha) => { for (let k = 40; k >= 1; k--) { const f = Math.pow(k / 40, 0.8); ctx.setFillColor(col(hex, alpha / 40)); ctx.fillEllipse(new Rect(cx - rx * f, cy - ry * f, rx * 2 * f, ry * 2 * f)); } };
+  glow(W * 0.9, H * 0.12, W * 0.8, H * 0.3, "#7b5cff", 0.5);
+  glow(W * 0.05, H * 0.62, W * 0.7, H * 0.25, "#1fb6ff", 0.3);
+  glow(W * 0.6, H * 0.98, W * 0.8, H * 0.18, "#ff7a3c", 0.18);
+  let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  for (let i = 0; i < 260; i++) { const big = rnd() > 0.9; ctx.setFillColor(col("#ffffff", big ? 0.7 : 0.15 + rnd() * 0.25)); ctx.fillRect(new Rect(rnd() * W, rnd() * H, big ? 2 : 1, big ? 2 : 1)); }
+
+  const RF = (s, b) => { try { return b ? Font.boldRoundedSystemFont(s) : Font.mediumRoundedSystemFont(s); } catch(e) { return b ? Font.boldSystemFont(s) : Font.systemFont(s); } };
+  const txt = (str, x, y, size, color, bold, w, align) => {
+    ctx.setFont(RF(size, bold)); ctx.setTextColor(color);
+    if (align === "right") ctx.setTextAlignedRight(); else if (align === "center") ctx.setTextAlignedCenter(); else ctx.setTextAlignedLeft();
+    ctx.drawTextInRect(str, new Rect(x, y, w || W, size * 1.45));
+  };
+  const cut = (s, n) => { const a = [...String(s)]; return a.length > n ? a.slice(0, n - 1).join("") + "…" : a.join(""); };
+  const rrect = (x, y, w, h, r, fill, stroke) => {
+    const p = new Path(); p.addRoundedRect(new Rect(x, y, w, h), r, r);
+    if (fill) { ctx.addPath(p); ctx.setFillColor(fill); ctx.fillPath(); }
+    if (stroke) { ctx.addPath(p); ctx.setStrokeColor(stroke); ctx.setLineWidth(1); ctx.strokePath(); }
+  };
+  const bar = (x, y, w, h, ratio, c1, c2) => {
+    rrect(x, y, w, h, h / 2, col("#ffffff", 0.14));
+    const fw = Math.max(0, Math.min(1, ratio)) * w, n = Math.max(1, Math.round(fw / 2));
+    for (let i = 0; i < n && fw > 0; i++) { ctx.setFillColor(col(mixHex(c1, c2, n > 1 ? i / (n - 1) : 0))); ctx.fillRect(new Rect(x + i * fw / n, y, fw / n + 0.6, h)); }
+  };
+  const pill = (str, x, y, size, fg, bg, w) => { const pw = w || (size * 0.62 * [...str].length + 16); rrect(x, y, pw, size + 8, (size + 8) / 2, bg); txt(str, x, y + 3, size, fg, true, pw, "center"); return pw; };
+
+  // パネル(ロック画面の時計の下〜ボタンの上)
+  const M = 18, top = Math.round(H * 0.355), bottom = Math.round(H * 0.875), PW = W - M * 2;
+  rrect(M, top, PW, bottom - top, 24, col("#0a0d2e", 0.62), col("#a9b4ff", 0.3));
+  const corner = pts => { const q = new Path(); q.addLines(pts.map(([x, y]) => new Point(x, y))); ctx.addPath(q); ctx.setStrokeColor(col("#ffd45e", 0.95)); ctx.setLineWidth(2.5); ctx.strokePath(); };
+  const cl = 18;
+  corner([[M, top + cl], [M, top], [M + cl, top]]); corner([[W - M - cl, top], [W - M, top], [W - M, top + cl]]);
+  corner([[M, bottom - cl], [M, bottom], [M + cl, bottom]]); corner([[W - M - cl, bottom], [W - M, bottom], [W - M, bottom - cl]]);
+
+  const X = M + 18, IW = PW - 36;
+  let y = top + 18;
+  // キャラ(ドット絵を直接描く)
+  const px = 5, rows = spriteRows(lookKey(st, L.lv));
+  rrect(X, y, 16 * px + 12, 16 * px + 12, 16, col("#ffffff", 0.07), col("#ffffff", 0.12));
+  rows.forEach((row, ry) => [...row].forEach((ch, rx) => { if (ch === ".") return; ctx.setFillColor(col(SPRITE_PAL[ch])); ctx.fillRect(new Rect(X + 6 + rx * px, y + 6 + ry * px, px, px)); }));
+  const NX = X + 16 * px + 26, NW = X + IW - NX;
+  txt(titleFor(L.lv), NX, y + 2, 13, C.cyan, true, NW);
+  txt(cut(st && st.name ? st.name : "ゆうしゃ", 10), NX, y + 20, 24, C.ink, true, NW);
+  const lvw = pill("Lv " + L.lv, NX, y + 58, 13, col("#221a00"), C.gold);
+  bar(NX + lvw + 8, y + 65, NW - lvw - 8, 8, L.cur / L.need, "#ffd45e", "#ff7a3c");
+  let cx = NX;
+  cx += pill("🪙 " + (st ? st.gold || 0 : 0), cx, y + 85, 12, C.gold, C.pillBg) + 6;
+  cx += pill("🔥 " + streak, cx, y + 85, 12, C.ink, C.pillBg) + 6;
+  if (hToday && hToday.steps != null) pill("👣 " + hToday.steps.toLocaleString("ja-JP"), cx, y + 85, 12, C.ink, C.pillBg);
+  y += 16 * px + 28;
+
+  // 天気
+  if (wx && wx.now) {
+    const d0 = (wx.days || [])[0];
+    rrect(X, y, IW, 34, 12, C.glass, C.glassLine);
+    const pop = popSoon(wx);
+    txt(wxIcon(wx.now.code) + " " + Math.round(wx.now.t) + "°" + (d0 ? "   " + Math.round(d0.max) + "° / " + Math.round(d0.min) + "°" : "") + "   ☂ この先6h " + (pop ?? "-") + "%", X + 12, y + 8, 14, C.ink, true, IW - 24);
+    if (wx.place) txt(cut(wx.place, 8), X + 12, y + 9, 12, C.dim, false, IW - 24, "right");
+    y += 46;
+  }
+
+  // デイリー
+  const d = new Date(now);
+  txt("◆ デイリー", X, y, 15, C.ink, true, IW);
+  txt(nDone + "/" + quests.length + "   " + (d.getMonth() + 1) + "/" + d.getDate() + "(" + "日月火水木金土"[d.getDay()] + ")", X, y + 1, 13, C.gold, true, IW, "right");
+  y += 26;
+  quests.forEach(q => {
+    const s = done.has(q.id) ? "done" : questState(q, now);
+    const mark = { done: "✓", open: "◆", locked: "◇", expired: "×" }[s];
+    const mc = { done: C.gold, open: C[q.s] || C.ink, locked: C.dim, expired: C.danger }[s];
+    txt(mark, X + 4, y, 14, mc, true, 20);
+    txt(cut(q.t, 20), X + 26, y, 15, s === "open" ? C.ink : C.dim, s === "open", IW - 26);
+    y += 25;
+  });
+  y += 10;
+
+  // 今日の予定(残りの高さに入るだけ)
+  txt("◆ 今日の予定", X, y, 15, C.ink, true, IW);
+  y += 26;
+  const maxEv = Math.max(1, Math.floor((bottom - 16 - y) / 25));
+  if (!upcoming.length) txt("このあとの予定はありません", X + 4, y, 14, C.dim, false, IW);
+  upcoming.slice(0, maxEv).forEach(e => {
+    const nowIn = !e.allDay && e.start <= now.getTime() && e.end > now.getTime(), isDone = !!evDone[evId(e)];
+    pill(e.allDay ? "終日" : hm(e.start), X, y - 2, 12, nowIn ? col("#04202e") : C.ink, nowIn ? C.cyan : C.pillBg, 54);
+    txt(cut((isDone ? "✓ " : "") + (e.title || "予定"), 17), X + 62, y, 15, isDone ? C.dim : C.ink, nowIn, IW - 62);
+    y += 25;
+  });
+
+  // 更新時刻(小さく)
+  txt("LIFE QUEST · " + hm(now.getTime()) + " 更新", 0, bottom + 8, 10, col("#a3a8dc", 0.7), true, W, "center");
+  return ctx.getImage();
+}
+
 const shortcutParam = typeof args !== "undefined" ? args.shortcutParameter : null;
-if (shortcutParam !== null && shortcutParam !== undefined && !config.runsInWidget) {
+if (shortcutParam != null && !config.runsInWidget && /壁紙|wallpaper/i.test(String(shortcutParam))) {
+  // ショートカットから「壁紙」で呼ばれたとき:ステータス画面の画像を返す(「壁紙を設定」につなぐ)
+  Script.setShortcutOutput(await buildWallpaper());
+} else if (shortcutParam !== null && shortcutParam !== undefined && !config.runsInWidget) {
   // ショートカットから呼ばれたとき:歩数・睡眠を記録するだけ(画面は出さない)
   await receiveHealth(shortcutParam);
 } else if (config.runsInWidget) {
