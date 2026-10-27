@@ -1279,7 +1279,7 @@ async function buildWidget(){
 /* ---- 壁紙(ステータス画面) ----
    ショートカットで「壁紙」を渡して実行すると、ステータス画面の画像を返す。
    上はロック画面の時計とウィジェット、下はライト・カメラのボタン用に空けてある。 */
-async function buildWallpaper(){
+async function buildWallpaper(home){
   const now = new Date(), t = today(now);
   let st = null; try { st = JSON.parse(loadSave() || "null"); } catch(e) {}
   const L = levelInfo(st ? st.xp || 0 : 0);
@@ -1331,7 +1331,8 @@ async function buildWallpaper(){
   const pill = (str, x, y, size, fg, bg, w) => { const pw = w || (size * 0.62 * [...str].length + 16); rrect(x, y, pw, size + 8, (size + 8) / 2, bg); txt(str, x, y + 3, size, fg, true, pw, "center"); return pw; };
 
   // パネル(ロック画面の時計の下〜ボタンの上)
-  const M = 18, top = Math.round(H * 0.355), bottom = Math.round(H * 0.875), PW = W - M * 2;
+  // ホーム画面用:上はステータスバー、下はDockだけ空ける(画面いっぱい)
+  const M = 18, top = Math.round(H * (home ? 0.075 : 0.355)), bottom = Math.round(H * (home ? 0.85 : 0.875)), PW = W - M * 2;
   rrect(M, top, PW, bottom - top, 24, col("#0a0d2e", 0.62), col("#a9b4ff", 0.3));
   const corner = pts => { const q = new Path(); q.addLines(pts.map(([x, y]) => new Point(x, y))); ctx.addPath(q); ctx.setStrokeColor(col("#ffd45e", 0.95)); ctx.setLineWidth(2.5); ctx.strokePath(); };
   const cl = 18;
@@ -1392,6 +1393,23 @@ async function buildWallpaper(){
     y += 25;
   });
 
+  // ホーム画面は広いので、近々の予定(明日から1週間)も入るだけ出す
+  if (home && bottom - 16 - y > 70) {
+    const soon = await soonEvents(7);
+    const gd = gameDate(now), base = new Date(gd.getFullYear(), gd.getMonth(), gd.getDate());
+    const dayLabel = ms => { const d = new Date(ms); const n = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - base) / 864e5);
+      return (n === 1 ? "明日" : n === 2 ? "あさって" : (d.getMonth()+1) + "/" + d.getDate()) + "(" + "日月火水木金土"[d.getDay()] + ")"; };
+    y += 10;
+    txt("◆ 近々の予定", X, y, 15, C.ink, true, IW); y += 26;
+    const maxS = Math.max(1, Math.floor((bottom - 16 - y) / 25));
+    if (!soon.length) txt("1週間、予定はありません", X + 4, y, 14, C.dim, false, IW);
+    soon.slice(0, maxS).forEach(e => {
+      txt(dayLabel(e.start), X + 4, y, 13, C.gold, true, 92);
+      txt(cut((e.allDay ? "" : hm(e.start) + " ") + (e.title || "予定"), 18), X + 96, y, 14, C.ink, false, IW - 96);
+      y += 25;
+    });
+  }
+
   // 更新時刻(小さく)
   txt("LIFE QUEST · " + hm(now.getTime()) + " 更新", 0, bottom + 8, 10, col("#a3a8dc", 0.7), true, W, "center");
   return ctx.getImage();
@@ -1400,7 +1418,7 @@ async function buildWallpaper(){
 const shortcutParam = typeof args !== "undefined" ? args.shortcutParameter : null;
 if (shortcutParam != null && !config.runsInWidget && /壁紙|wallpaper/i.test(String(shortcutParam))) {
   // ショートカットから「壁紙」で呼ばれたとき:ステータス画面の画像を返す(「壁紙を設定」につなぐ)
-  Script.setShortcutOutput(await buildWallpaper());
+  Script.setShortcutOutput(await buildWallpaper(/ホーム|home/i.test(String(shortcutParam))));
 } else if (shortcutParam !== null && shortcutParam !== undefined && !config.runsInWidget) {
   // ショートカットから呼ばれたとき:歩数・睡眠を記録するだけ(画面は出さない)
   await receiveHealth(shortcutParam);
