@@ -343,16 +343,31 @@ async function getWeather(maxAgeMin, freshLoc){
     }
     if (!loc) return cache ? cache.data : null;
     const url = "https://api.open-meteo.com/v1/forecast?latitude=" + loc.lat.toFixed(3) + "&longitude=" + loc.lon.toFixed(3)
-      + "&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=3";
+      + "&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&hourly=precipitation_probability&timezone=auto&forecast_days=3";
     const r = new Request(url); r.timeoutInterval = 6;
     const j = await r.loadJSON();
-    const data = { place: loc.place || "", at: Date.now(),
+    // 時間ごとの降水確率(この先36時間ぶん)。表示時に「いまから」を計算する
+    const off = (j.utc_offset_seconds || 0) * 1000, nowH = Math.floor(Date.now() / 3600000) * 3600000;
+    const hours = [];
+    if (j.hourly && j.hourly.time) j.hourly.time.forEach((t, i) => {
+      const ms = Date.parse(t + ":00Z") - off; // 現地時刻 → UTCミリ秒
+      if (ms >= nowH && ms < nowH + 36 * 3600000) hours.push([ms, j.hourly.precipitation_probability[i]]);
+    });
+    const data = { place: loc.place || "", at: Date.now(), hours,
       now: { t: j.current.temperature_2m, code: j.current.weather_code },
       days: j.daily.time.map((d, i) => ({ date: d, code: j.daily.weather_code[i], max: j.daily.temperature_2m_max[i],
         min: j.daily.temperature_2m_min[i], pop: j.daily.precipitation_probability_max[i] })) };
     fm.writeString(WX_FILE, JSON.stringify({ at: Date.now(), data, loc }));
     return data;
   } catch(e) { return cache ? cache.data : null; }
+}
+// この先h時間の最大降水確率(時間別データが無い古いキャッシュは日の最大値)
+function popSoon(wx, h = 6){
+  if (!wx) return null;
+  const now = Math.floor(Date.now() / 3600000) * 3600000;
+  const hs = (wx.hours || []).filter(x => x[0] >= now && x[0] < now + h * 3600000 && x[1] != null);
+  if (hs.length) return Math.max(...hs.map(x => x[1]));
+  const d0 = (wx.days || [])[0]; return d0 && d0.pop != null ? d0.pop : null;
 }
 function wxIcon(code){
   if (code === 0) return "☀️"; if (code <= 2) return "🌤"; if (code === 3) return "☁️"; if (code <= 48) return "🌫";
@@ -1125,7 +1140,7 @@ async function buildWidget(){
   if (family === "accessoryInline") {
     // 時計の上の1行(Parameter:天気 → 天気と気温、歩数 → 歩数、それ以外 → Lv・デイリー・次の予定)
     let line;
-    if (/天気|weather/i.test(lockParam) && wx) { const d0 = (wx.days || [])[0]; line = wxShort + (d0 ? " " + Math.round(d0.max) + "°/" + Math.round(d0.min) + "° ☂" + (d0.pop ?? "-") + "%" : ""); }
+    if (/天気|weather/i.test(lockParam) && wx) { const d0 = (wx.days || [])[0]; line = wxShort + (d0 ? " " + Math.round(d0.max) + "°/" + Math.round(d0.min) + "° ☂" + (popSoon(wx) ?? "-") + "%" : ""); }
     else if (/歩|step/i.test(lockParam)) line = stepsShort ? stepsShort + "歩" : "👣 まだ届いていません";
     else line = "Lv" + L.lv + " ・ デイリー" + nDone + "/" + quests.length + (wxShort ? " ・ " + wxShort : "") + " ・ " + nextLabel;
     const t = w.addText(line);
@@ -1161,7 +1176,7 @@ async function buildWidget(){
       center([["👣", 10], [st != null ? (st >= 10000 ? (st / 1000).toFixed(1) + "k" : st.toLocaleString("ja-JP")) : "--", st != null && st >= 1000 ? 12 : 14, true]]);
     } else if (/天気|weather/i.test(lockParam)) {
       const d0 = wx && wx.days ? wx.days[0] : null;
-      center([[wx ? wxIcon(wx.now.code) : "?", 18], [wx ? Math.round(wx.now.t) + "°" : "--", 13, true], [d0 ? "☂" + (d0.pop ?? "-") + "%" : "", 8]]);
+      center([[wx ? wxIcon(wx.now.code) : "?", 18], [wx ? Math.round(wx.now.t) + "°" : "--", 13, true], [wx ? "☂" + (popSoon(wx) ?? "-") + "%" : "", 8]]);
     } else if (/^lv|レベル/i.test(lockParam)) {
       w.backgroundImage = ring(L.cur / L.need);
       center([["Lv", 9], [String(L.lv), 18, true]]);

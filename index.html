@@ -1207,15 +1207,23 @@ function wxInfo(code){
   if(code<=57)return["🌦","霧雨"];if(code<=67)return["🌧","雨"];if(code<=77)return["❄️","雪"];if(code<=82)return["🌦","にわか雨"];if(code<=86)return["🌨","にわか雪"];return["⛈","雷雨"];
 }
 function wxToday(){if(!WEATHER||!WEATHER.days)return null;return WEATHER.days.find(d=>d.date===today())||WEATHER.days[0]}
+// 時間別の降水確率の最大値 [from, to) (ms)。古いデータは日の最大値で代用
+function popRange(from,to){
+  const hs=(WEATHER&&WEATHER.hours||[]).filter(x=>x[0]>=from&&x[0]<to&&x[1]!=null);
+  if(hs.length)return Math.max(...hs.map(x=>x[1]));
+  const d=wxToday();return d&&d.pop!=null?d.pop:null;
+}
+function popSoon(){const n=Math.floor(Date.now()/3600000)*3600000;return popRange(n,n+6*3600000)}
+function popRest(){const n=Math.floor(Date.now()/3600000)*3600000,e=new Date();e.setHours(24,0,0,0);return popRange(n,Math.max(e.getTime(),n+3600000))}
 function wxLine(){
   const d=wxToday();if(!d)return"";
   const [ic,nm]=wxInfo(d.code);
-  return `<div class="meta" style="margin-top:6px"><span>${ic} ${nm}</span><span>いま <strong class="mono">${Math.round(WEATHER.now.t)}°</strong></span><span class="mono">${Math.round(d.max)}° / ${Math.round(d.min)}°</span><span>☂ <strong class="mono">${d.pop??"-"}%</strong></span>${WEATHER.place?`<span>${esc(WEATHER.place)}</span>`:""}</div>`;
+  return `<div class="meta" style="margin-top:6px"><span>${ic} ${nm}</span><span>いま <strong class="mono">${Math.round(WEATHER.now.t)}°</strong></span><span class="mono">${Math.round(d.max)}° / ${Math.round(d.min)}°</span><span>☂ この先6時間 <strong class="mono">${popSoon()??"-"}%</strong></span>${WEATHER.place?`<span>${esc(WEATHER.place)}</span>`:""}</div>`;
 }
 // 今日の天気に合わせたクエスト(1日1つ)
 function wxQuest(){
   const d=wxToday();if(!d)return null;
-  const c=d.code,rain=(c>=51&&c<=67)||(c>=80&&c<=82)||c>=95||(d.pop||0)>=50,snow=(c>=71&&c<=77)||c===85||c===86;
+  const c=d.code,rain=(c>=51&&c<=67)||(c>=80&&c<=82)||c>=95||(popRest()||0)>=50,snow=(c>=71&&c<=77)||c===85||c===86;
   let t,st="mind";
   if(snow){t="あたたかくして、足もとに気をつけて出かける";st="body"}
   else if(rain)t="傘を忘れずに持って出かける";
