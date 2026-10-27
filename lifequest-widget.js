@@ -801,12 +801,14 @@ function mixHex(a, b, t){
   return "#" + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, "0")).join("");
 }
 // 背景:夜空 + オーロラの光 + 星 + 細い光の枠と、四隅の金色のL字(ゲームのHUD風)
-function windowBackground(family){
+// part: "top" / "bottom" のときは、上下2つ並べて1枚に見えるように、色と四隅を半分ずつにする
+function windowBackground(family, part){
   const [W, H] = WIDGET_SIZE[family] || WIDGET_SIZE.medium;
   const ctx = new DrawContext(); ctx.size = new Size(W, H); ctx.opaque = true; ctx.respectScreenScale = true;
   const bands = 56;
   for (let i = 0; i < bands; i++) {
-    ctx.setFillColor(new Color(mixHex("#141a52", "#05071a", i / (bands - 1))));
+    const f = part === "top" ? i / (bands - 1) * 0.5 : part === "bottom" ? 0.5 + i / (bands - 1) * 0.5 : i / (bands - 1);
+    ctx.setFillColor(new Color(mixHex("#141a52", "#05071a", f)));
     ctx.fillRect(new Rect(0, Math.floor(H * i / bands), W, Math.ceil(H / bands) + 1));
   }
   // オーロラ:薄い楕円を重ねて、ぼんやり光らせる
@@ -818,8 +820,9 @@ function windowBackground(family){
       ctx.fillEllipse(new Rect(cx - rx * f, cy - ry * f, rx * 2 * f, ry * 2 * f));
     }
   };
-  glow(W * 0.85, H * 0.05, W * 0.55, H * 0.55, "#7b5cff", 0.55);
-  glow(W * 0.1, H * 0.95, W * 0.5, H * 0.45, "#1fb6ff", 0.35);
+  if (part === "top") { glow(W * 0.85, H * 0.05, W * 0.6, H * 0.5, "#7b5cff", 0.55); glow(W * 0.1, H * 1.05, W * 0.55, H * 0.35, "#1fb6ff", 0.3); }
+  else if (part === "bottom") { glow(W * 0.1, H * -0.05, W * 0.55, H * 0.35, "#1fb6ff", 0.3); glow(W * 0.9, H * 1.0, W * 0.6, H * 0.4, "#ff7a3c", 0.18); }
+  else { glow(W * 0.85, H * 0.05, W * 0.55, H * 0.55, "#7b5cff", 0.55); glow(W * 0.1, H * 0.95, W * 0.5, H * 0.45, "#1fb6ff", 0.35); }
   // 星(毎回同じ並びになるように固定の乱数)
   let seed = 11;
   const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
@@ -834,10 +837,8 @@ function windowBackground(family){
   // 四隅の金色のL字
   const L = 14, o = 5;
   const corner = pts => { const q = new Path(); q.addLines(pts.map(([x, y]) => new Point(x, y))); ctx.addPath(q); ctx.setStrokeColor(new Color("#ffd45e", 0.95)); ctx.setLineWidth(2.2); ctx.strokePath(); };
-  corner([[o, o + L], [o, o], [o + L, o]]);
-  corner([[W - o - L, o], [W - o, o], [W - o, o + L]]);
-  corner([[o, H - o - L], [o, H - o], [o + L, H - o]]);
-  corner([[W - o - L, H - o], [W - o, H - o], [W - o, H - o - L]]);
+  if (part !== "bottom") { corner([[o, o + L], [o, o], [o + L, o]]); corner([[W - o - L, o], [W - o, o], [W - o, o + L]]); }
+  if (part !== "top") { corner([[o, H - o - L], [o, H - o], [o + L, H - o]]); corner([[W - o - L, H - o], [W - o, H - o], [W - o, H - o - L]]); }
   return ctx.getImage();
 }
 // 光るグラデーションのバー
@@ -905,7 +906,9 @@ async function buildWidget(){
   const w = new ListWidget();
   if (!String(family).startsWith("accessory")) {
     w.backgroundColor = C.sky;
-    try { w.backgroundImage = windowBackground(family); } catch(e) {}
+    const pv = String((typeof args !== "undefined" && args.widgetParameter) || "").trim();
+    const part = /^(上|top)$/i.test(pv) ? "top" : /^(下|bottom)$/i.test(pv) ? "bottom" : null;
+    try { w.backgroundImage = windowBackground(family, part); } catch(e) {}
   }
   w.setPadding(14, 16, 13, 16);
   w.url = URLScheme.forRunningScript();
@@ -1076,8 +1079,69 @@ async function buildWidget(){
     if (soon.length) { w.addSpacer(6); sectionTitle("近々の予定"); soonLines(n); }
     else fillNext(n);
   }
-  /* ---- 1週間の予定(ウィジェットの「Parameter」に「週」と入れたとき) ---- */
   const param = String((typeof args !== "undefined" && args.widgetParameter) || "").trim();
+  /* ---- 上下2つで1画面(「上」「下」)。空のページに大ウィジェットを縦に並べる用 ---- */
+  if (/^(上|top)$/i.test(param) && !String(family).startsWith("accessory")) {
+    // キャラとステータス
+    const top = w.addStack(); top.centerAlignContent(); top.spacing = 12;
+    const fr = top.addStack(); fr.backgroundColor = C.glass; fr.cornerRadius = 14; fr.borderColor = C.glassLine; fr.borderWidth = 1; fr.setPadding(5, 5, 5, 5);
+    const im = fr.addImage(spriteImage(lookKey(st, L.lv), 4)); im.imageSize = new Size(62, 62);
+    const info = top.addStack(); info.layoutVertically(); info.spacing = 3;
+    text(info, titleFor(L.lv), 11, C.cyan, true);
+    text(info, st && st.name ? st.name : "ゆうしゃ", 20, C.ink, true);
+    const lv = info.addStack(); lv.centerAlignContent(); lv.spacing = 6;
+    pill(lv, "Lv " + L.lv, new Color("#221a00"), C.gold, 12);
+    bar(lv, L.cur / L.need, 15);
+    const ch = info.addStack(); ch.centerAlignContent(); ch.spacing = 5;
+    pill(ch, "🪙" + (st ? st.gold || 0 : 0), C.gold, null, 10);
+    pill(ch, "🔥" + streak, C.ink, null, 10);
+    if (hToday && hToday.steps != null) pill(ch, "👣" + hToday.steps.toLocaleString("ja-JP"), C.ink, null, 10);
+    w.addSpacer(8);
+    // 天気
+    if (wx && wx.now) {
+      const d0 = (wx.days || [])[0];
+      const g = glass(w, 5, 10); const r = g.addStack(); r.centerAlignContent(); r.spacing = 8;
+      text(r, wxIcon(wx.now.code) + " " + Math.round(wx.now.t) + "°", 14, C.ink, true);
+      if (d0) text(r, Math.round(d0.max) + "° / " + Math.round(d0.min) + "°", 12, C.dim, true);
+      text(r, "☂ 6h " + (popSoon(wx) ?? "-") + "%", 12, C.cyan, true);
+      r.addSpacer();
+      if (wx.place) text(r, wx.place, 11, C.dim);
+      w.addSpacer(8);
+    }
+    // デイリー
+    const h = w.addStack(); h.centerAlignContent();
+    text(h, "◆", 10, C.cyan, true); h.addSpacer(5);
+    text(h, "デイリー", 13, C.ink, true); h.addSpacer(6);
+    pill(h, nDone + "/" + quests.length, nDone === quests.length ? new Color("#221a00") : C.ink, nDone === quests.length ? C.gold : C.pillBg, 10);
+    h.addSpacer();
+    text(h, "RESET ", 8, C.dim, true);
+    const rd = h.addDate(nextReset(now)); rd.applyTimerStyle(); rd.font = Font.mediumMonospacedSystemFont(11); rd.textColor = C.dim; rd.rightAlignText();
+    w.addSpacer(4);
+    for (const q of quests) { questLine(w, q); w.addSpacer(7); }
+    w.addSpacer();
+    return w;
+  }
+  if (/^(下|bottom)$/i.test(param) && !String(family).startsWith("accessory")) {
+    const d = new Date(now);
+    sectionTitle("今日の予定", (d.getMonth() + 1) + "/" + d.getDate() + " " + "日月火水木金土"[d.getDay()]);
+    w.addSpacer(2);
+    // 行数の目安:全部で11行くらい。今日 → 近々 → リマインダーの順に配る
+    const nToday = Math.max(1, Math.min(upcoming.length, 4));
+    if (!upcoming.length) text(w, evsRaw ? "今日はこのあと予定なし" : "タップしてカレンダーを許可してください", 12, C.dim);
+    for (const e of upcoming.slice(0, nToday)) { eventLine(w, e, 13); w.addSpacer(3); }
+    if (upcoming.length > nToday) text(w, "ほか " + (upcoming.length - nToday) + "件", 10, C.dim);
+    let left = 10 - nToday;
+    const nSoon = Math.min(soon.length, remsLeft.length ? Math.max(2, left - Math.min(remsLeft.length, 3)) : left);
+    if (nSoon > 0) { w.addSpacer(7); sectionTitle("近々の予定"); soonLines(nSoon); left -= nSoon + 1; }
+    const nRem = Math.min(remsLeft.length, Math.max(0, left - 1));
+    if (nRem > 0) {
+      w.addSpacer(7); sectionTitle("リマインダー", remsLeft.length + "件");
+      for (const r of remsLeft.slice(0, nRem)) itemLine("!", r.overdue ? C.danger : C.gold, r.title || "リマインダー", C.ink);
+    } else if (!nSoon) fillNext(Math.max(0, left - 1));
+    w.addSpacer();
+    return w;
+  }
+  /* ---- 1週間の予定(ウィジェットの「Parameter」に「週」と入れたとき) ---- */
   if (/週|week/i.test(param) && !String(family).startsWith("accessory")) {
     const gd = gameDate(now);
     const days = [];
