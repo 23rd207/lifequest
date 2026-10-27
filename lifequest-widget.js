@@ -1126,11 +1126,13 @@ async function buildWidget(){
     sectionTitle("今日の予定", (d.getMonth() + 1) + "/" + d.getDate() + " " + "日月火水木金土"[d.getDay()]);
     w.addSpacer(2);
     // 行数の目安:全部で11行くらい。今日 → 近々 → リマインダーの順に配る
-    const nToday = Math.max(1, Math.min(upcoming.length, 4));
+    // 中サイズ(大+中で画面いっぱい)のときは行数を少なめに
+    const total = family === "medium" ? 4 : 10;
+    const nToday = Math.max(1, Math.min(upcoming.length, family === "medium" ? 3 : 4));
     if (!upcoming.length) text(w, evsRaw ? "今日はこのあと予定なし" : "タップしてカレンダーを許可してください", 12, C.dim);
     for (const e of upcoming.slice(0, nToday)) { eventLine(w, e, 13); w.addSpacer(3); }
     if (upcoming.length > nToday) text(w, "ほか " + (upcoming.length - nToday) + "件", 10, C.dim);
-    let left = 10 - nToday;
+    let left = total - nToday;
     const nSoon = Math.min(soon.length, remsLeft.length ? Math.max(2, left - Math.min(remsLeft.length, 3)) : left);
     if (nSoon > 0) { w.addSpacer(7); sectionTitle("近々の予定"); soonLines(nSoon); left -= nSoon + 1; }
     const nRem = Math.min(remsLeft.length, Math.max(0, left - 1));
