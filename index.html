@@ -536,7 +536,8 @@ function rollover(now=new Date()){
 }
 
 /* ---------- level ---------- */
-const need = l => 40 + l*20;
+// 必要EXP:序盤はサクサク、後半はじわじわ重くなる(1日 約330EXP で Lv10≒2日・Lv30≒2週間・Lv50≒1か月半・Lv100≒8か月)
+const need = l => Math.round(20 + 8*l + 0.12*l*l);
 function levelInfo(xp){let l=1,x=xp;while(l<MAX_LV&&x>=need(l)){x-=need(l);l++}
   if(l>=MAX_LV)return{lv:MAX_LV,cur:need(MAX_LV),need:need(MAX_LV),max:true};
   return{lv:l,cur:x,need:need(l)}}

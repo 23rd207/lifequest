@@ -101,7 +101,7 @@ function dailyFor(date){
   const by = w => POOL.filter(q => q.w === w);
   return [...pick(by("morning"),1,r), ...pick(by("any"),3,r), ...pick(by("night"),1,r)].map(q => q.id);
 }
-const need = l => 40 + l*20;
+const need = l => Math.round(20 + 8*l + 0.12*l*l); // ゲームと同じ式
 function levelInfo(xp){ let l=1,x=xp; while(l<MAX_LV&&x>=need(l)){ x-=need(l); l++; }
   return l>=MAX_LV ? {lv:MAX_LV,cur:1,need:1} : {lv:l,cur:x,need:need(l)}; }
 function rankIndex(lv){ let i=0; TITLES.forEach(([l],k) => { if (lv>=l) i=k; }); return i; }
