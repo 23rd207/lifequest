@@ -1121,7 +1121,7 @@ async function buildWidget(){
     w.addSpacer();
     return w;
   }
-  /* ---- 「下」:1週間の予定。中サイズは7日を2列に並べたマス目、大サイズは「週」と同じ一覧 ---- */
+  /* ---- 「下」(中サイズ):1週間の予定を縦に7行。1日1行に詰める ---- */
   if (/^(下|bottom)$/i.test(param) && family === "medium") {
     const gd = gameDate(now);
     const days = [];
@@ -1132,39 +1132,35 @@ async function buildWidget(){
     }
     let pays = [];
     try { pays = (await loadPays()) || []; } catch(e) {}
+    w.setPadding(10, 16, 9, 16);
     const d0 = days[0].date, d6 = days[6].date;
     const head = w.addStack(); head.centerAlignContent();
-    text(head, "◆", 9, C.cyan, true); head.addSpacer(5);
-    text(head, "1週間の予定", 12, C.ink, true);
+    text(head, "◆", 8, C.cyan, true); head.addSpacer(4);
+    text(head, "1週間の予定", 11, C.ink, true);
     head.addSpacer();
-    text(head, (d0.getMonth()+1) + "/" + d0.getDate() + " – " + (d6.getMonth()+1) + "/" + d6.getDate(), 10, C.dim, true);
-    w.addSpacer(5);
-    // 1マス:日付 + いちばん早い予定(+残りの件数)
-    const cell = (parent, i) => {
-      const c = parent.addStack(); c.centerAlignContent(); c.spacing = 5; c.setPadding(3, 6, 3, 6); c.cornerRadius = 8;
-      c.size = new Size(150, 0);
-      if (i === 0) { c.backgroundColor = C.glass; c.borderColor = C.glassLine; c.borderWidth = 1; }
-      if (i >= days.length) return;
-      const d = days[i], wd = d.date.getDay(), ds = ymd(d.date);
-      const lab = c.addStack(); lab.size = new Size(36, 0);
+    text(head, (d0.getMonth()+1) + "/" + d0.getDate() + " – " + (d6.getMonth()+1) + "/" + d6.getDate(), 9, C.dim, true);
+    w.addSpacer(3);
+    days.forEach((d, i) => {
+      const wd = d.date.getDay(), ds = ymd(d.date);
+      const items = d.list.map(e => ({ time: e.allDay ? "終日" : hm(e.start), title: e.title || "予定",
+          shift: SHIFT_RE.test(e.title || "") || SHIFT_RE.test(e.cal || ""), cont: e.start < d.date.getTime() }))
+        .concat(pays.filter(p => p.due && ymd(new Date(p.due)) === ds).map(p => ({ time: "支払", title: p.title, pay: true })));
+      const row = w.addStack(); row.centerAlignContent(); row.spacing = 6; row.setPadding(1, 5, 1, 5);
+      if (i === 0) { row.backgroundColor = C.glass; row.cornerRadius = 6; }
+      const lab = row.addStack(); lab.size = new Size(38, 0);
       const lt = lab.addText(i === 0 ? "今日" : d.date.getDate() + " " + "日月火水木金土"[wd]);
       lt.font = RF(11, true); lt.lineLimit = 1; lt.minimumScaleFactor = 0.7;
       lt.textColor = i === 0 ? C.gold : wd === 0 ? C.danger : wd === 6 ? C.int : C.ink;
-      const items = d.list.map(e => ({ time: e.allDay ? "" : hm(e.start), title: e.title || "予定",
-          shift: SHIFT_RE.test(e.title || "") || SHIFT_RE.test(e.cal || "") }))
-        .concat(pays.filter(p => p.due && ymd(new Date(p.due)) === ds).map(p => ({ time: "", title: "💴" + p.title })));
-      if (!items.length) { text(c, "—", 11, C.dim); c.addSpacer(); return; }
+      if (!items.length) { text(row, "—", 11, C.dim); row.addSpacer(); return; }
       const it = items[0];
-      if (it.time) { const tm = c.addText(it.time); tm.font = Font.mediumMonospacedSystemFont(10); tm.textColor = it.shift ? C.gold : C.cyan; tm.lineLimit = 1; }
-      text(c, it.title, 11, C.ink);
-      c.addSpacer();
-      if (items.length > 1) text(c, "+" + (items.length - 1), 9, C.dim, true);
-    };
-    for (let r = 0; r < 4; r++) {
-      const row = w.addStack(); row.spacing = 6;
-      cell(row, r); cell(row, r + 4);
-      if (r < 3) w.addSpacer(3);
-    }
+      const tm = row.addText(it.time); tm.font = Font.mediumMonospacedSystemFont(10); tm.lineLimit = 1;
+      tm.textColor = it.pay ? C.bond : it.shift ? C.gold : C.cyan;
+      text(row, (it.cont ? "(続き) " : "") + it.title, 11, it.cont ? C.dim : C.ink);
+      // 2件目もあれば横に薄く
+      if (items[1]) text(row, "・" + (items[1].time === "終日" || items[1].pay ? "" : items[1].time + " ") + items[1].title, 10, C.dim);
+      row.addSpacer();
+      if (items.length > 2) text(row, "+" + (items.length - 2), 9, C.dim, true);
+    });
     w.addSpacer();
     return w;
   }
