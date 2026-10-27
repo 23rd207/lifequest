@@ -1418,7 +1418,9 @@ async function buildWallpaper(home){
 const shortcutParam = typeof args !== "undefined" ? args.shortcutParameter : null;
 if (shortcutParam != null && !config.runsInWidget && /壁紙|wallpaper/i.test(String(shortcutParam))) {
   // ショートカットから「壁紙」で呼ばれたとき:ステータス画面の画像を返す(「壁紙を設定」につなぐ)
-  Script.setShortcutOutput(await buildWallpaper(/ホーム|home/i.test(String(shortcutParam))));
+  // 画像は直接返せないので、PNGをBase64の文字にして返す(ショートカット側で「Base64デコード」)
+  const img = await buildWallpaper(/ホーム|home/i.test(String(shortcutParam)));
+  Script.setShortcutOutput(Data.fromPNG(img).toBase64String());
 } else if (shortcutParam !== null && shortcutParam !== undefined && !config.runsInWidget) {
   // ショートカットから呼ばれたとき:歩数・睡眠を記録するだけ(画面は出さない)
   await receiveHealth(shortcutParam);
