@@ -924,7 +924,8 @@ async function buildWidget(){
   w.setPadding(14, 16, 13, 16);
   // タップで開くタブ:「下」「週」はこよみ、それ以外はクエスト
   const tapParam = String((typeof args !== "undefined" && args.widgetParameter) || "").trim();
-  w.url = URLScheme.forRunningScript() + (/週|week|^(下|bottom)$/i.test(tapParam) ? "&tab=cal" : "");
+  const runUrl = URLScheme.forRunningScript(); // 例: scriptable:///run/Life%20quest
+  w.url = /週|week|^(下|bottom)$/i.test(tapParam) ? runUrl + (runUrl.includes("?") ? "&" : "?") + "tab=cal" : runUrl;
   w.refreshAfterDate = new Date(now.getTime() + 5*60e3); // 実際にいつ更新するかはiPhoneが決める
 
   // 数字・英字は丸みのある書体に(日本語はiPhoneの標準の書体のまま)
