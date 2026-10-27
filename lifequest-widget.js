@@ -344,7 +344,7 @@ async function getWeather(maxAgeMin, freshLoc){
     if (!loc) return cache ? cache.data : null;
     const url = "https://api.open-meteo.com/v1/forecast?latitude=" + loc.lat.toFixed(3) + "&longitude=" + loc.lon.toFixed(3)
       + "&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&hourly=precipitation_probability&timezone=auto&forecast_days=3";
-    const r = new Request(url); r.timeoutInterval = 6;
+    const r = new Request(url); r.timeoutInterval = config.runsInWidget ? 3 : 6; // ウィジェットは待たせない
     const j = await r.loadJSON();
     // 時間ごとの降水確率(この先36時間ぶん)。表示時に「いまから」を計算する
     const off = (j.utc_offset_seconds || 0) * 1000, nowH = Math.floor(Date.now() / 3600000) * 3600000;
@@ -889,7 +889,7 @@ async function buildWidget(){
   const nextEv = evs.filter(e => !evDone[evId(e)] && (e.allDay || e.end > now.getTime()))
     .sort((a,b) => (a.allDay ? 0 : a.start) - (b.allDay ? 0 : b.start));
   const family = config.widgetFamily || "medium";
-  const wx = await getWeather(60);
+  const wx = await getWeather(180); // ウィジェットでは3時間までキャッシュを使う(ゲームを開くと最新になる)
   const hToday = loadHealth()[t] || null;
   const rs = (await loadReminders()) || [];
   const rDone = st && st.rems && st.rems.date === t ? st.rems.done || {} : {};
@@ -912,7 +912,7 @@ async function buildWidget(){
   }
   w.setPadding(14, 16, 13, 16);
   w.url = URLScheme.forRunningScript();
-  w.refreshAfterDate = new Date(now.getTime() + 10*60e3);
+  w.refreshAfterDate = new Date(now.getTime() + 5*60e3); // 実際にいつ更新するかはiPhoneが決める
 
   // 数字・英字は丸みのある書体に(日本語はiPhoneの標準の書体のまま)
   const RF = (size, bold) => {
