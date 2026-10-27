@@ -832,13 +832,22 @@ function windowBackground(family, part){
     ctx.fillRect(new Rect(Math.round(x), Math.round(y), big ? 1.6 : 1, big ? 1.6 : 1));
   }
   // 細い光の枠
-  const p = new Path(); p.addRoundedRect(new Rect(5, 5, W - 10, H - 10), 16, 16);
+  const p = new Path(); p.addRoundedRect(new Rect(6, 6, W - 12, H - 12), 16, 16);
   ctx.addPath(p); ctx.setStrokeColor(new Color("#a9b4ff", 0.28)); ctx.setLineWidth(1); ctx.strokePath();
   // 四隅の金色のL字
-  const L = 14, o = 5;
-  const corner = pts => { const q = new Path(); q.addLines(pts.map(([x, y]) => new Point(x, y))); ctx.addPath(q); ctx.setStrokeColor(new Color("#ffd45e", 0.95)); ctx.setLineWidth(2.2); ctx.strokePath(); };
-  if (part !== "bottom") { corner([[o, o + L], [o, o], [o + L, o]]); corner([[W - o - L, o], [W - o, o], [W - o, o + L]]); }
-  if (part !== "top") { corner([[o, H - o - L], [o, H - o], [o + L, H - o]]); corner([[W - o - L, H - o], [W - o, H - o], [W - o, H - o - L]]); }
+  // iPhoneのウィジェットの角の丸み(約22pt)にそって曲げるので、角で切れない
+  const L = 12, o = 6, R = 22, r = R - o;
+  const corner = (sx, sy) => {
+    const cx = sx < 0 ? W - R : R, cy = sy < 0 ? H - R : R, pts = [];
+    const ex = sx < 0 ? W - o : o, ey = sy < 0 ? H - o : o;
+    pts.push([ex, cy + (sy > 0 ? L : -L)]);
+    for (let k = 0; k <= 12; k++) { const t = Math.PI / 2 * k / 12; pts.push([cx - sx * r * Math.cos(t), cy - sy * r * Math.sin(t)]); }
+    pts.push([cx + (sx > 0 ? L : -L), ey]);
+    const q = new Path(); q.addLines(pts.map(([x, y]) => new Point(x, y))); ctx.addPath(q);
+    ctx.setStrokeColor(new Color("#ffd45e", 0.95)); ctx.setLineWidth(2.4); ctx.strokePath();
+  };
+  if (part !== "bottom") { corner(1, 1); corner(-1, 1); }
+  if (part !== "top") { corner(1, -1); corner(-1, -1); }
   return ctx.getImage();
 }
 // 光るグラデーションのバー
