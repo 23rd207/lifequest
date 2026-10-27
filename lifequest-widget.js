@@ -1121,30 +1121,55 @@ async function buildWidget(){
     w.addSpacer();
     return w;
   }
-  if (/^(下|bottom)$/i.test(param) && !String(family).startsWith("accessory")) {
-    const d = new Date(now);
-    sectionTitle("今日の予定", (d.getMonth() + 1) + "/" + d.getDate() + " " + "日月火水木金土"[d.getDay()]);
-    w.addSpacer(2);
-    // 行数の目安:全部で11行くらい。今日 → 近々 → リマインダーの順に配る
-    // 中サイズ(大+中で画面いっぱい)のときは行数を少なめに
-    const total = family === "medium" ? 4 : 10;
-    const nToday = Math.max(1, Math.min(upcoming.length, family === "medium" ? 3 : 4));
-    if (!upcoming.length) text(w, evsRaw ? "今日はこのあと予定なし" : "タップしてカレンダーを許可してください", 12, C.dim);
-    for (const e of upcoming.slice(0, nToday)) { eventLine(w, e, 13); w.addSpacer(3); }
-    if (upcoming.length > nToday) text(w, "ほか " + (upcoming.length - nToday) + "件", 10, C.dim);
-    let left = total - nToday;
-    const nSoon = Math.min(soon.length, remsLeft.length ? Math.max(2, left - Math.min(remsLeft.length, 3)) : left);
-    if (nSoon > 0) { w.addSpacer(7); sectionTitle("近々の予定"); soonLines(nSoon); left -= nSoon + 1; }
-    const nRem = Math.min(remsLeft.length, Math.max(0, left - 1));
-    if (nRem > 0) {
-      w.addSpacer(7); sectionTitle("リマインダー", remsLeft.length + "件");
-      for (const r of remsLeft.slice(0, nRem)) itemLine("!", r.overdue ? C.danger : C.gold, r.title || "リマインダー", C.ink);
-    } else if (!nSoon) fillNext(Math.max(0, left - 1));
+  /* ---- 「下」:1週間の予定。中サイズは7日を2列に並べたマス目、大サイズは「週」と同じ一覧 ---- */
+  if (/^(下|bottom)$/i.test(param) && family === "medium") {
+    const gd = gameDate(now);
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      let list = [];
+      try { list = (await eventsForDay(i)).map(mapEvent); } catch(e) {}
+      days.push({ date: new Date(gd.getFullYear(), gd.getMonth(), gd.getDate() + i), list });
+    }
+    let pays = [];
+    try { pays = (await loadPays()) || []; } catch(e) {}
+    const d0 = days[0].date, d6 = days[6].date;
+    const head = w.addStack(); head.centerAlignContent();
+    text(head, "◆", 9, C.cyan, true); head.addSpacer(5);
+    text(head, "1週間の予定", 12, C.ink, true);
+    head.addSpacer();
+    text(head, (d0.getMonth()+1) + "/" + d0.getDate() + " – " + (d6.getMonth()+1) + "/" + d6.getDate(), 10, C.dim, true);
+    w.addSpacer(5);
+    // 1マス:日付 + いちばん早い予定(+残りの件数)
+    const cell = (parent, i) => {
+      const c = parent.addStack(); c.centerAlignContent(); c.spacing = 5; c.setPadding(3, 6, 3, 6); c.cornerRadius = 8;
+      c.size = new Size(150, 0);
+      if (i === 0) { c.backgroundColor = C.glass; c.borderColor = C.glassLine; c.borderWidth = 1; }
+      if (i >= days.length) return;
+      const d = days[i], wd = d.date.getDay(), ds = ymd(d.date);
+      const lab = c.addStack(); lab.size = new Size(36, 0);
+      const lt = lab.addText(i === 0 ? "今日" : d.date.getDate() + " " + "日月火水木金土"[wd]);
+      lt.font = RF(11, true); lt.lineLimit = 1; lt.minimumScaleFactor = 0.7;
+      lt.textColor = i === 0 ? C.gold : wd === 0 ? C.danger : wd === 6 ? C.int : C.ink;
+      const items = d.list.map(e => ({ time: e.allDay ? "" : hm(e.start), title: e.title || "予定",
+          shift: SHIFT_RE.test(e.title || "") || SHIFT_RE.test(e.cal || "") }))
+        .concat(pays.filter(p => p.due && ymd(new Date(p.due)) === ds).map(p => ({ time: "", title: "💴" + p.title })));
+      if (!items.length) { text(c, "—", 11, C.dim); c.addSpacer(); return; }
+      const it = items[0];
+      if (it.time) { const tm = c.addText(it.time); tm.font = Font.mediumMonospacedSystemFont(10); tm.textColor = it.shift ? C.gold : C.cyan; tm.lineLimit = 1; }
+      text(c, it.title, 11, C.ink);
+      c.addSpacer();
+      if (items.length > 1) text(c, "+" + (items.length - 1), 9, C.dim, true);
+    };
+    for (let r = 0; r < 4; r++) {
+      const row = w.addStack(); row.spacing = 6;
+      cell(row, r); cell(row, r + 4);
+      if (r < 3) w.addSpacer(3);
+    }
     w.addSpacer();
     return w;
   }
   /* ---- 1週間の予定(ウィジェットの「Parameter」に「週」と入れたとき) ---- */
-  if (/週|week/i.test(param) && !String(family).startsWith("accessory")) {
+  if (/週|week|^下$|^bottom$/i.test(param) && !String(family).startsWith("accessory")) {
     const gd = gameDate(now);
     const days = [];
     for (let i = 0; i < 7; i++) {
