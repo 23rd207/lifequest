@@ -97,13 +97,6 @@ button,input,select{font:inherit;color:inherit}
 .clock{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--dim);border-top:2px dashed #ffffff22;margin-top:10px;padding-top:8px}
 .clock b{color:var(--ink);font-weight:400}
 
-/* 投稿クエストの中の投稿ボックス */
-.pplats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
-.pplats .btn{padding-inline:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pplats .btn.on{border-color:var(--c-bond);color:var(--c-bond)}
-.pcaps summary{cursor:pointer;font-weight:700}
-.pcap{display:flex;flex-direction:column;gap:4px;margin-top:8px}
-.pcap pre{margin:0;white-space:pre-wrap;word-break:break-word;font:inherit;font-size:12px;line-height:1.6;padding:8px;border:1px dashed currentColor;border-radius:6px;opacity:.9}
 /* quests */
 .qlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 .q{
@@ -1258,43 +1251,11 @@ function wxQuest(){
   return {id:"wx",t,s:st,d:1,icon:wxInfo(c)[0]};
 }
 /* ---------- もしもランドセル(毎日のショート動画の投稿) ---------- */
-// 動画は毎朝「投稿ボックス」に届く。投稿したらここで達成する
-// Scriptable の「投稿ボックス」スクリプトを開く
-// ブラウザで開いたときは、claude.ai の投稿ボックス(予備)を開く
-const POSTBOX_URL="https://claude.ai/artifact/RnJ4mAtxjF88qUwWqEsm6D";
+// その日の動画を投稿したら、自分で達成する
 function postQuest(){return {id:"post",t:"今日の「もしも」を投稿する",s:"bond",d:2}}
-// ウィジェットから開いたとき、Scriptable が今日の動画・投稿文・投稿済みの印を渡してくる
-let POSTSYNC=window.__LQ_POST__||null, postMsg="", postCapsOpen=false;
-const POST_PLATS=[["youtube","YouTube","youtube://"],["tiktok","TikTok","snssdk1233://"],["instagram","Instagram","instagram://"],["x","X","twitter://"]];
-const postOK=()=>!!POSTSYNC&&!!POSTSYNC.no;
-const postToday=()=>postOK()&&POSTSYNC.date===today();
-const postMarked=k=>postOK()&&!!(POSTSYNC.marks&&POSTSYNC.marks[k]);
-const postAllMarked=()=>postToday()&&POST_PLATS.every(([k])=>postMarked(k));
-window.__lqSetPost=d=>{POSTSYNC=d;render();autoPost()};
-window.__lqPostMsg=(m,err)=>{postMsg=(err?"!":"")+m;render()};
-// 4つ全部に印が付いたら、自動で達成
-function autoPost(){if(postAllMarked()&&!state.post.done){complete("post","post");say(["投稿ボックスの印を見て、","「今日の「もしも」を投稿する」を 達成した！"])}}
-function postBox(){
-  if(!IN_WIDGET_APP)return `<div class="row" style="margin-top:8px"><button class="btn ghost small" type="button" data-ext="${POSTBOX_URL}">投稿ボックスを開く</button></div>
-    <p class="note" style="margin:6px 0 0">ホーム画面のウィジェットから開くと、ここで動画の保存・投稿文のコピー・投稿済みの印付けができて、4つ全部に印を付けると自動で達成になります。</p>`;
-  if(!POSTSYNC||POSTSYNC.needKey)return `<div class="row" style="margin-top:8px"><button class="btn ghost small" type="button" data-pkey="1">投稿ボックスの鍵を入れる</button></div>
-    <p class="note" style="margin:6px 0 0">GitHub の鍵(moshimo-shorts の Contents 読み書きだけを許可したトークン)を一度入れると、ここで投稿の準備ができます。</p>`;
-  if(POSTSYNC.error)return `<p class="note" style="margin:8px 0 0">${esc(POSTSYNC.error)}</p><div class="row"><button class="btn ghost small" type="button" data-pkey="1">鍵を入れ直す</button></div>`;
-  const c=POSTSYNC.captions||{},m=postMsg;
-  const cap=(label,key)=>c[key]?`<div class="pcap"><div class="row" style="justify-content:space-between;align-items:center;margin:0"><span class="note" style="margin:0">${label}</span><button class="btn ghost small" type="button" data-pcopy="${key}">コピー</button></div><pre>${esc(c[key])}</pre></div>`:"";
-  return `<div class="q-sub" style="margin-top:8px"><span>No.${esc(POSTSYNC.no)} ${esc(POSTSYNC.title)}${postToday()?"":"(今日の動画はまだ届いていません)"}</span></div>
-    <div class="row" style="margin-top:8px"><button class="btn go" type="button" data-pvideo="1" style="width:100%">▶ 動画を開く(保存・共有)</button></div>
-    ${m?`<p class="note" style="margin:4px 0 0;${m[0]==="!"?"color:var(--c-hot,#ff7a7a)":""}">${esc(m.replace(/^!/,""))}</p>`:""}
-    <p class="note" style="margin:8px 0 4px">投稿したら押す</p>
-    <div class="pplats">${POST_PLATS.map(([k,n])=>`<button type="button" class="btn ghost small${postMarked(k)?" on":""}" data-pmark="${k}" aria-pressed="${postMarked(k)}">${postMarked(k)?"✓ ":""}${n}</button>`).join("")}</div>
-    <p class="note" style="margin:8px 0 4px">アプリを開く</p>
-    <div class="pplats">${POST_PLATS.map(([k,n,u])=>`<button type="button" class="btn ghost small" data-ext="${u}">${n}</button>`).join("")}</div>
-    ${POSTSYNC.captions?`<details class="pcaps" style="margin-top:8px"${postCapsOpen?" open":""}><summary>投稿文</summary>${cap("YouTube タイトル","youtubeTitle")}${cap("YouTube 説明","youtubeDesc")}${cap("TikTok/Instagram","tiktok")}${cap("X","x")}</details>`:""}`;
-}
 function postSection(now){
   return `<section class="win" aria-labelledby="h-post"><h2 class="win-title" id="h-post"><b>📮 投稿クエスト</b><span>もしもランドセル</span></h2>
-    <ul class="qlist">${questRow(postQuest(),"post",now)}</ul>
-    ${postBox()}</section>`;
+    <ul class="qlist">${questRow(postQuest(),"post",now)}</ul></section>`;
 }
 function wxSection(now){
   const q=wxQuest();if(!q)return"";
@@ -1585,19 +1546,10 @@ function undo(kind,id){
 }
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 
-// 投稿文の開け閉めを覚えておく(画面を描き直しても閉じないように)
-app.addEventListener("toggle",e=>{if(e.target.classList&&e.target.classList.contains("pcaps"))postCapsOpen=e.target.open},true);
 app.addEventListener("click",e=>{
   const b=e.target.closest("button");if(!b)return;
   if(b.dataset.do){const[k,i]=b.dataset.do.split(":");complete(k,i);return}
   if(b.dataset.undo){const[k,i]=b.dataset.undo.split(":");undo(k,i);return}
-  // 投稿クエストの中の投稿ボックス(ウィジェットから開いたとき)
-  if(b.dataset.pkey){pushOp({type:"moshimoKey"});return}
-  if(b.dataset.pvideo&&postOK()){postMsg="動画を読み込み中…(はじめは少し時間がかかります)";render();pushOp({type:"moshimoVideo",file:POSTSYNC.file});return}
-  if(b.dataset.pcopy&&postOK()&&POSTSYNC.captions){pushOp({type:"moshimoCopy",text:POSTSYNC.captions[b.dataset.pcopy]||""});b.textContent="コピーしました";return}
-  if(b.dataset.pmark&&postOK()){const k=b.dataset.pmark,v=!postMarked(k);POSTSYNC.marks=Object.assign({},POSTSYNC.marks,{[k]:v});postMsg="";render();pushOp({type:"moshimoMark",no:POSTSYNC.no,k,v});autoPost();return}
-  // 外のページ:ウィジェットから開いたときは Scriptable に Safari で開いてもらう
-  if(b.dataset.ext){if(IN_WIDGET_APP)pushOp({type:"openURL",url:b.dataset.ext});else window.open(b.dataset.ext,"_blank","noopener");return}
   if(b.dataset.view){state.viewMode=b.dataset.view;save();render();say([b.dataset.view==="full"?"次から 全画面で開くよ。":"次から シートで開くよ。","一度閉じて、ウィジェットから開き直してね。"]);return}
   if(b.dataset.lifedel){state.lifeEvents=state.lifeEvents.filter(e=>e.id!==b.dataset.lifedel);save();render();return}
   if(b.dataset.note){ui.noteOpen=ui.noteOpen===b.dataset.note?"":b.dataset.note;render();return}
@@ -1838,7 +1790,7 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden)render()})
 
 render();
 if(!state.name)askName();
-else {collectRemsDoneElsewhere();setTimeout(collectHealth,1200);setTimeout(autoPost,1600);}
+else {collectRemsDoneElsewhere();setTimeout(collectHealth,1200);}
 
 /* offline support */
 if(!IN_WIDGET_APP&&"serviceWorker" in navigator&&location.protocol==="https:"){
