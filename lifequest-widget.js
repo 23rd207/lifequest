@@ -597,23 +597,62 @@ async function fetchGame(timeout){
   } catch(e) {}
   return null;
 }
-// もしもランドセル(23rd207/moshimo-shorts):今日の動画と、投稿ボックスで付けた投稿済みの印
-// 鍵は投稿ボックスのローダーがキーチェーンに入れたものを使う。鍵がなければ何もしない
+// もしもランドセル(23rd207/moshimo-shorts):投稿クエストの中の投稿ボックス
+// 今日の動画・投稿文・投稿済みの印を GitHub から読み、印を書き込む。
+// 鍵は投稿ボックスと同じキーチェーンの "moshimo_github_token"(moshimo-shorts の Contents 読み書きだけを許可したトークン)
+const MOSHIMO = { repo: "23rd207/moshimo-shorts", key: "moshimo_github_token" };
+const moshimoToken = () => Keychain.contains(MOSHIMO.key) ? Keychain.get(MOSHIMO.key) : "";
+function moshimoReq(url, timeout){
+  const r = new Request(url);
+  r.headers = { Authorization: "Bearer " + moshimoToken(), Accept: "application/vnd.github+json", "User-Agent": "lifequest" };
+  r.timeoutInterval = timeout || 6; return r;
+}
+const moshimoRaw = p => "https://raw.githubusercontent.com/" + MOSHIMO.repo + "/main/" + p.split("/").map(encodeURIComponent).join("/") + "?t=" + Date.now();
+async function moshimoGet(path, fallback){
+  try { const r = moshimoReq(moshimoRaw(path), 5); const s = await r.loadString(); return r.response.statusCode === 200 ? s : fallback; } catch(e) { return fallback; }
+}
+async function moshimoMarks(){
+  const r = moshimoReq("https://api.github.com/repos/" + MOSHIMO.repo + "/contents/company/marks.json?ref=main");
+  const j = await r.loadJSON();
+  if (r.response.statusCode === 404) return { marks: {}, sha: null };
+  if (r.response.statusCode !== 200) throw new Error(j.message || String(r.response.statusCode));
+  return { marks: JSON.parse(Data.fromBase64String(j.content.replace(/\n/g, "")).toRawString()), sha: j.sha };
+}
 async function loadMoshimo(){
-  const KEY = "moshimo_github_token";
-  if (!Keychain.contains(KEY)) return null;
-  const get = async (path, fallback) => {
-    try {
-      const r = new Request("https://raw.githubusercontent.com/23rd207/moshimo-shorts/main/" + path + "?t=" + Date.now());
-      r.headers = { Authorization: "Bearer " + Keychain.get(KEY) }; r.timeoutInterval = 4;
-      const s = await r.loadString();
-      return r.response.statusCode === 200 ? JSON.parse(s) : fallback;
-    } catch(e) { return fallback; }
-  };
-  const [posted, neta, marks] = await Promise.all([get("posted.json", null), get("neta.json", []), get("company/marks.json", {})]);
+  if (!moshimoToken()) return { needKey: true };
+  const [postedS, netaS, marksS] = await Promise.all([moshimoGet("posted.json", null), moshimoGet("neta.json", "[]"), moshimoGet("company/marks.json", "{}")]);
+  let posted, neta, marks;
+  try { posted = JSON.parse(postedS); neta = JSON.parse(netaS); marks = JSON.parse(marksS); } catch(e) { return { error: "読み込めませんでした。鍵が正しいか確かめてください。" }; }
   if (!posted || !posted.length) return null;
   const last = posted[posted.length - 1], n = (neta || []).find(x => x.id === last.id);
-  return { no: last.no, date: last.date, title: n ? n.title.replace(/\n/g, "") : "", marks: (marks || {})[last.no] || {} };
+  // .txt は【YouTube ショート】【TikTok / Instagram リール】【X】の3欄
+  const txt = await moshimoGet("videos/" + last.file.replace(/\.mp4$/, ".txt"), "");
+  const part = h => (txt.split(h)[1] || "").split(/\n【/)[0].trim(), yt = part("【YouTube ショート】");
+  return { no: last.no, date: last.date, file: last.file, title: n ? n.title.replace(/\n/g, "") : "", marks: (marks || {})[last.no] || {},
+    captions: txt ? { youtubeTitle: ((yt.match(/タイトル: (.+)/) || [])[1] || "").trim(), youtubeDesc: (yt.split("説明:\n")[1] || "").trim(), tiktok: part("【TikTok / Instagram リール】"), x: part("【X】") } : null };
+}
+async function moshimoVideo(file){
+  const dir = fm.joinPath(fm.cacheDirectory(), "moshimo-postbox");
+  if (!fm.fileExists(dir)) fm.createDirectory(dir, true);
+  const path = fm.joinPath(dir, file);
+  if (!fm.fileExists(path)) {
+    const r = moshimoReq(moshimoRaw("videos/" + file), 120); const data = await r.load();
+    if (r.response.statusCode !== 200) throw new Error("動画を取れませんでした(" + r.response.statusCode + ")");
+    fm.write(path, data);
+    fm.listContents(dir).filter(f => f.endsWith(".mp4")).sort().reverse().slice(5).forEach(f => { try { fm.remove(fm.joinPath(dir, f)); } catch(e) {} });
+  }
+  return path;
+}
+async function moshimoSetMark(no, k, v){
+  // 最新の印を読み直してから1か所だけ変える(投稿ボックスアプリで付けた印を消さないように)
+  const m = await moshimoMarks();
+  (m.marks[no] = m.marks[no] || {})[k] = !!v;
+  const r = moshimoReq("https://api.github.com/repos/" + MOSHIMO.repo + "/contents/company/marks.json");
+  r.method = "PUT"; r.headers["Content-Type"] = "application/json";
+  r.body = JSON.stringify({ message: "No." + no + " " + k + " を" + (v ? "投稿済み" : "未投稿") + "に(LifeQuest)", branch: "main", sha: m.sha || undefined,
+    content: Data.fromString(JSON.stringify(m.marks, null, 1) + "\n").toBase64String() });
+  const j = await r.loadJSON();
+  if (r.response.statusCode !== 200 && r.response.statusCode !== 201) throw new Error(j.message || String(r.response.statusCode));
 }
 async function openGame(){
   // まず最新版を取りにいく(最大3秒)。電波が悪いときは保存済みの版で開く
@@ -677,7 +716,21 @@ async function openGame(){
     for (const op of r.o || []) {
       try {
         if (op.type === "openURL") {
-          if (/^(https|scriptable):\/\//.test(String(op.url || ""))) Safari.open(String(op.url));
+          if (/^(https|youtube|snssdk1233|instagram|twitter):\/\//.test(String(op.url || ""))) Safari.open(String(op.url));
+        } else if (op.type === "moshimoCopy") {
+          Pasteboard.copyString(String(op.text || ""));
+        } else if (op.type === "moshimoVideo") {
+          try { const p = await moshimoVideo(String(op.file)); await wv.evaluateJavaScript("window.__lqPostMsg(" + JSON.stringify("右上の共有ボタンから「ビデオを保存」や各アプリへ") + ");0", false); await QuickLook.present(p, true); }
+          catch(e) { await wv.evaluateJavaScript("window.__lqPostMsg(" + JSON.stringify(String(e.message || e)) + ",true);0", false); }
+        } else if (op.type === "moshimoMark") {
+          try { await moshimoSetMark(String(op.no), String(op.k), !!op.v); }
+          catch(e) { await wv.evaluateJavaScript("window.__lqPostMsg(" + JSON.stringify("印を保存できませんでした: " + (e.message || e)) + ",true);0", false); }
+          await wv.evaluateJavaScript("window.__lqSetPost(" + JSON.stringify(await loadMoshimo()).replace(/</g, "\\u003c") + ");0", false);
+        } else if (op.type === "moshimoKey") {
+          const a = new Alert(); a.title = "投稿ボックスの鍵"; a.message = "moshimo-shorts の「Contents: 読み書き」だけを許可した GitHub の fine-grained トークンを貼ってください。";
+          a.addSecureTextField("github_pat_…", ""); a.addAction("保存"); a.addCancelAction("やめる");
+          if (await a.present() === 0 && a.textFieldValue(0).trim()) Keychain.set(MOSHIMO.key, a.textFieldValue(0).trim());
+          await wv.evaluateJavaScript("window.__lqSetPost(" + JSON.stringify(await loadMoshimo()).replace(/</g, "\\u003c") + ");0", false);
         } else if (op.type === "rem") {
           const rem = remMap.get(op.id);
           if (rem) { rem.isCompleted = !!op.done; rem.save(); }
