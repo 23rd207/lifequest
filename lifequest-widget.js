@@ -657,7 +657,9 @@ async function openGame(){
     let added = false, remAdded = false, wishChanged = false, payChanged = false;
     for (const op of r.o || []) {
       try {
-        if (op.type === "rem") {
+        if (op.type === "openURL") {
+          if (/^https:\/\//.test(String(op.url || ""))) Safari.open(String(op.url));
+        } else if (op.type === "rem") {
           const rem = remMap.get(op.id);
           if (rem) { rem.isCompleted = !!op.done; rem.save(); }
         } else if (op.type === "addPay") {
