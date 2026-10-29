@@ -1255,11 +1255,21 @@ function wxQuest(){
 // Scriptable の「投稿ボックス」スクリプトを開く
 const POSTBOX_URL="scriptable:///run/"+encodeURIComponent("投稿ボックス");
 function postQuest(){return {id:"post",t:"今日の「もしも」を投稿する",s:"bond",d:2}}
+// ウィジェットから開いたとき、Scriptable が今日の動画と投稿済みの印を渡してくる(投稿ボックスの鍵があるときだけ)
+const POSTSYNC=window.__LQ_POST__||null;
+const POST_PLATS=[["youtube","YouTube"],["tiktok","TikTok"],["instagram","Instagram"],["x","X"]];
+const postToday=()=>!!POSTSYNC&&POSTSYNC.date===today();
+const postAllMarked=()=>postToday()&&POST_PLATS.every(([k])=>POSTSYNC.marks&&POSTSYNC.marks[k]);
+// 投稿ボックスで4つ全部に印が付いていたら、自動で達成
+function autoPost(){if(postAllMarked()&&!state.post.done){complete("post","post");say(["投稿ボックスの印を見て、","「今日の「もしも」を投稿する」を 達成した！"])}}
 function postSection(now){
   return `<section class="win" aria-labelledby="h-post"><h2 class="win-title" id="h-post"><b>📮 投稿クエスト</b><span>もしもランドセル</span></h2>
     <ul class="qlist">${questRow(postQuest(),"post",now)}</ul>
+    ${postToday()?`<div class="q-sub" style="margin-top:6px"><span>No.${esc(POSTSYNC.no)} ${esc(POSTSYNC.title)}</span></div>
+    <div class="q-sub" style="margin-top:4px">${POST_PLATS.map(([k,n])=>`<span class="chip${POSTSYNC.marks&&POSTSYNC.marks[k]?" rew":""}">${POSTSYNC.marks&&POSTSYNC.marks[k]?"✓ ":""}${n}</span>`).join("")}</div>`
+      :POSTSYNC?`<div class="q-sub" style="margin-top:6px"><span>今日の動画はまだ届いていません(最新 No.${esc(POSTSYNC.no)})</span></div>`:""}
     <div class="row" style="margin-top:8px"><button class="btn ghost small" type="button" data-ext="${POSTBOX_URL}">投稿ボックスを開く</button></div>
-    <p class="note" style="margin:6px 0 0">投稿ボックスで動画を保存して、YouTube・TikTok・Instagram・X に投稿したら達成。</p></section>`;
+    <p class="note" style="margin:6px 0 0">${POSTSYNC?"投稿ボックスで4つ全部に印を付けると、自動で達成になります。":"投稿ボックスで動画を保存して、YouTube・TikTok・Instagram・X に投稿したら達成。ウィジェットから開くと、投稿ボックスの印で自動で達成になります。"}</p></section>`;
 }
 function wxSection(now){
   const q=wxQuest();if(!q)return"";
@@ -1796,7 +1806,7 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden)render()})
 
 render();
 if(!state.name)askName();
-else {collectRemsDoneElsewhere();setTimeout(collectHealth,1200);}
+else {collectRemsDoneElsewhere();setTimeout(collectHealth,1200);setTimeout(autoPost,1600);}
 
 /* offline support */
 if(!IN_WIDGET_APP&&"serviceWorker" in navigator&&location.protocol==="https:"){
