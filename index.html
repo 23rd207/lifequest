@@ -1252,7 +1252,8 @@ function wxQuest(){
 }
 /* ---------- もしもランドセル(毎日のショート動画の投稿) ---------- */
 // 動画は毎朝「投稿ボックス」に届く。投稿したらここで達成する
-const POSTBOX_URL="https://claude.ai/artifact/RnJ4mAtxjF88qUwWqEsm6D";
+// Scriptable の「投稿ボックス」スクリプトを開く
+const POSTBOX_URL="scriptable:///run/"+encodeURIComponent("投稿ボックス");
 function postQuest(){return {id:"post",t:"今日の「もしも」を投稿する",s:"bond",d:2}}
 function postSection(now){
   return `<section class="win" aria-labelledby="h-post"><h2 class="win-title" id="h-post"><b>📮 投稿クエスト</b><span>もしもランドセル</span></h2>
