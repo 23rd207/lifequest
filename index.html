@@ -413,6 +413,7 @@ function fresh(){
     lifeEvents:[],
     care:{date:"",done:false},
     wx:{date:"",done:false},
+    post:{date:"",done:false},
     health:{date:"",got:{}},
     hist:{},
     wardrobe:{owned:{},wear:""},
@@ -524,6 +525,7 @@ function rollover(now=new Date()){
   if(state.events.date!==t){state.events={date:t,done:{}};changed=true}
   if(state.obs.date!==t){state.obs={date:t,done:{}};changed=true}
   if(state.wx.date!==t){state.wx={date:t,done:false};changed=true}
+  if(state.post.date!==t){state.post={date:t,done:false};changed=true}
   if(state.care.date!==t){state.care={date:t,done:false};changed=true}
   if(state.health.date!==t){state.health={date:t,got:{}};changed=true}
   if(state.rems.date!==t){state.rems={date:t,done:{}};changed=true;
@@ -989,7 +991,7 @@ function questStateFor(q,now){
 function questRow(q,kind,now){
   const D=DIFF[q.d], S=STATS[q.s];
   let right, cls="q", extra="";
-  const done = kind==="care" ? !!state.care.done : kind==="wx" ? !!state.wx.done : kind==="daily" ? !!state.daily.done[q.id] : kind==="event" ? !!state.events.done[q.id] : kind==="rem" ? !!state.rems.done[q.id] : kind==="obs" ? !!state.obs.done[q.id] : isDoneNow(q);
+  const done = kind==="care" ? !!state.care.done : kind==="wx" ? !!state.wx.done : kind==="post" ? !!state.post.done : kind==="daily" ? !!state.daily.done[q.id] : kind==="event" ? !!state.events.done[q.id] : kind==="rem" ? !!state.rems.done[q.id] : kind==="obs" ? !!state.obs.done[q.id] : isDoneNow(q);
   if(done){
     cls+=" done";
     right=`<button class="stamp" data-undo="${kind}:${q.id}" aria-label="${esc(q.t)} の達成を取り消す">CLEAR</button>`;
@@ -998,7 +1000,7 @@ function questRow(q,kind,now){
     if(s.st==="locked"){cls+=" locked";right=`<div class="wait">受注まで<br><span class="mono">${s.wait}</span></div>`}
     else if(s.st==="expired"){cls+=" expired";right=`<span class="expired-tag">期限切れ</span>`}
     else{right=`<button class="btn go" data-do="daily:${q.id}">達成</button>`;if(s.left)extra=`<span>のこり ${s.left}</span>`}
-  }else if(kind==="wx"||kind==="care"){
+  }else if(kind==="wx"||kind==="care"||kind==="post"){
     right=`<button class="btn go" data-do="${kind}:${kind}">達成</button>`;
   }else if(kind==="rem"||kind==="obs"){
     right=`<button class="btn go" data-do="${kind}:${q.id}">達成</button>`;
@@ -1012,6 +1014,7 @@ function questRow(q,kind,now){
     : kind==="event" ? `<span class="chip">${multiDay(q)?(q.allDay?"終日 ":hm(q.start)+" ")+multiTxt(q,today()):(q.allDay?"終日":hm(q.start)+"〜"+hm(q.end))}</span>${q.shift?`<span class="chip rew">シフト</span>`:""}${q.days?`<span class="chip">達成 ${((state.multi[q.mkey]||{}).days||[]).length}/${q.days}日</span>`:""}`
     : kind==="wx" ? `<span class="chip">今日の天気</span>`
     : kind==="care" ? `<span class="chip">ケア</span>`
+    : kind==="post" ? `<span class="chip">毎日</span>`
     : kind==="obs" ? `${q.overdue&&!done?`<span class="chip expired-tag">期限切れ</span>`:q.due?`<span class="chip">${remDueLabel(q)}</span>`:q.inDaily?`<span class="chip">今日のノート</span>`:""}<span>${esc(q.file||"")}</span>`
     : kind==="rem" ? `${q.overdue&&!done?`<span class="chip expired-tag">期限切れ</span>`:`<span class="chip">${remDueLabel(q)}</span>`}${q.list?`<span>${esc(q.list)}</span>`:""}`
     : `<span class="chip">${(REPEAT[q.r]||REPEAT.daily).chip}</span>`;
@@ -1030,6 +1033,7 @@ function questTab(now){
   return `
   ${careSection(now)}
   ${wxSection(now)}
+  ${postSection(now)}
   <section class="win" aria-labelledby="h-daily">
     <h2 class="win-title" id="h-daily"><b>デイリーミッション</b><span class="mono">${dn} / ${qs.length}</span></h2>
     <div class="progress-line"><div class="bar"><i style="width:${qs.length?dn/qs.length*100:0}%"></i></div></div>
@@ -1245,6 +1249,27 @@ function wxQuest(){
   else if(c<=2)t="外に出て、5分 空を見上げる";
   else t="窓を開けて、空気を入れかえる";
   return {id:"wx",t,s:st,d:1,icon:wxInfo(c)[0]};
+}
+/* ---------- もしもランドセル(毎日のショート動画の投稿) ---------- */
+// 動画は毎朝「投稿ボックス」に届く。投稿したらここで達成する
+// Scriptable の「投稿ボックス」スクリプトを開く
+const POSTBOX_URL="scriptable:///run/"+encodeURIComponent("投稿ボックス");
+function postQuest(){return {id:"post",t:"今日の「もしも」を投稿する",s:"bond",d:2}}
+// ウィジェットから開いたとき、Scriptable が今日の動画と投稿済みの印を渡してくる(投稿ボックスの鍵があるときだけ)
+const POSTSYNC=window.__LQ_POST__||null;
+const POST_PLATS=[["youtube","YouTube"],["tiktok","TikTok"],["instagram","Instagram"],["x","X"]];
+const postToday=()=>!!POSTSYNC&&POSTSYNC.date===today();
+const postAllMarked=()=>postToday()&&POST_PLATS.every(([k])=>POSTSYNC.marks&&POSTSYNC.marks[k]);
+// 投稿ボックスで4つ全部に印が付いていたら、自動で達成
+function autoPost(){if(postAllMarked()&&!state.post.done){complete("post","post");say(["投稿ボックスの印を見て、","「今日の「もしも」を投稿する」を 達成した！"])}}
+function postSection(now){
+  return `<section class="win" aria-labelledby="h-post"><h2 class="win-title" id="h-post"><b>📮 投稿クエスト</b><span>もしもランドセル</span></h2>
+    <ul class="qlist">${questRow(postQuest(),"post",now)}</ul>
+    ${postToday()?`<div class="q-sub" style="margin-top:6px"><span>No.${esc(POSTSYNC.no)} ${esc(POSTSYNC.title)}</span></div>
+    <div class="q-sub" style="margin-top:4px">${POST_PLATS.map(([k,n])=>`<span class="chip${POSTSYNC.marks&&POSTSYNC.marks[k]?" rew":""}">${POSTSYNC.marks&&POSTSYNC.marks[k]?"✓ ":""}${n}</span>`).join("")}</div>`
+      :POSTSYNC?`<div class="q-sub" style="margin-top:6px"><span>今日の動画はまだ届いていません(最新 No.${esc(POSTSYNC.no)})</span></div>`:""}
+    <div class="row" style="margin-top:8px"><button class="btn ghost small" type="button" data-ext="${POSTBOX_URL}">投稿ボックスを開く</button></div>
+    <p class="note" style="margin:6px 0 0">${POSTSYNC?"投稿ボックスで4つ全部に印を付けると、自動で達成になります。":"投稿ボックスで動画を保存して、YouTube・TikTok・Instagram・X に投稿したら達成。ウィジェットから開くと、投稿ボックスの印で自動で達成になります。"}</p></section>`;
 }
 function wxSection(now){
   const q=wxQuest();if(!q)return"";
@@ -1479,6 +1504,8 @@ function complete(kind,id){
     q=careQuest();if(!q||state.care.done)return;
   }else if(kind==="wx"){
     q=wxQuest();if(!q||state.wx.done)return;
+  }else if(kind==="post"){
+    q=postQuest();if(state.post.done)return;
   }else if(kind==="obs"){
     q=obsQuests().find(r=>r.id===id);if(!q||state.obs.done[id])return;
   }else if(kind==="rem"){
@@ -1501,7 +1528,7 @@ function complete(kind,id){
       else lines.push(`全${q.days}日のうち ${m.days.length}日ぶん クリア。`)}}
   else if(kind==="rem"){state.rems.done[id]=true;pushOp({type:"rem",id,done:true})}
   else if(kind==="obs"){state.obs.done[id]=true;pushOp({type:"obsTask",id,done:true})}
-  else if(kind==="wx"){state.wx.done=true}else if(kind==="care"){state.care.done=true}else q.doneOn=today();
+  else if(kind==="wx"){state.wx.done=true}else if(kind==="care"){state.care.done=true}else if(kind==="post"){state.post.done=true}else q.doneOn=today();
   if(countDone(1))lines.push(`連続 ${state.streak}日目！ よくがんばった。`);
   if(kind==="daily"&&!state.daily.bonus&&state.daily.ids.every(i=>state.daily.done[i])){
     state.daily.bonus=true;lv=grant(ALL_CLEAR.xp,ALL_CLEAR.g,null,"デイリー オールクリア")||lv;
@@ -1525,6 +1552,7 @@ function undo(kind,id){
   else if(kind==="obs"){q=obsQuests().find(r=>r.id===id);if(!q||!state.obs.done[id])return;delete state.obs.done[id];pushOp({type:"obsTask",id,done:false})}
   else if(kind==="wx"){q=wxQuest();if(!q||!state.wx.done)return;state.wx.done=false}
   else if(kind==="care"){q=careQuest();if(!q||!state.care.done)return;state.care.done=false}
+  else if(kind==="post"){q=postQuest();if(!state.post.done)return;state.post.done=false}
   else{q=state.custom.find(c=>c.id===id);if(!q||!isDoneNow(q))return;sameDay=q.doneOn===today();q.doneOn=""}
   const D=DIFF[q.d];grant(D.xp,D.g,q.s,q.t,-1);countDone(-1,sameDay);
   if(state.week.bonus&&state.week.n<WEEK_GOAL){state.week.bonus=false;grant(WEEK_BONUS.xp,WEEK_BONUS.g,null,"ウィークリー達成",-1)}
@@ -1536,6 +1564,8 @@ app.addEventListener("click",e=>{
   const b=e.target.closest("button");if(!b)return;
   if(b.dataset.do){const[k,i]=b.dataset.do.split(":");complete(k,i);return}
   if(b.dataset.undo){const[k,i]=b.dataset.undo.split(":");undo(k,i);return}
+  // 外のページ:ウィジェットから開いたときは Scriptable に Safari で開いてもらう
+  if(b.dataset.ext){if(IN_WIDGET_APP)pushOp({type:"openURL",url:b.dataset.ext});else window.open(b.dataset.ext,"_blank","noopener");return}
   if(b.dataset.view){state.viewMode=b.dataset.view;save();render();say([b.dataset.view==="full"?"次から 全画面で開くよ。":"次から シートで開くよ。","一度閉じて、ウィジェットから開き直してね。"]);return}
   if(b.dataset.lifedel){state.lifeEvents=state.lifeEvents.filter(e=>e.id!==b.dataset.lifedel);save();render();return}
   if(b.dataset.note){ui.noteOpen=ui.noteOpen===b.dataset.note?"":b.dataset.note;render();return}
@@ -1776,7 +1806,7 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden)render()})
 
 render();
 if(!state.name)askName();
-else {collectRemsDoneElsewhere();setTimeout(collectHealth,1200);}
+else {collectRemsDoneElsewhere();setTimeout(collectHealth,1200);setTimeout(autoPost,1600);}
 
 /* offline support */
 if(!IN_WIDGET_APP&&"serviceWorker" in navigator&&location.protocol==="https:"){

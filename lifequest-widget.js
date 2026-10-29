@@ -597,6 +597,24 @@ async function fetchGame(timeout){
   } catch(e) {}
   return null;
 }
+// もしもランドセル(23rd207/moshimo-shorts):今日の動画と、投稿ボックスで付けた投稿済みの印
+// 鍵は投稿ボックスのローダーがキーチェーンに入れたものを使う。鍵がなければ何もしない
+async function loadMoshimo(){
+  const KEY = "moshimo_github_token";
+  if (!Keychain.contains(KEY)) return null;
+  const get = async (path, fallback) => {
+    try {
+      const r = new Request("https://raw.githubusercontent.com/23rd207/moshimo-shorts/main/" + path + "?t=" + Date.now());
+      r.headers = { Authorization: "Bearer " + Keychain.get(KEY) }; r.timeoutInterval = 4;
+      const s = await r.loadString();
+      return r.response.statusCode === 200 ? JSON.parse(s) : fallback;
+    } catch(e) { return fallback; }
+  };
+  const [posted, neta, marks] = await Promise.all([get("posted.json", null), get("neta.json", []), get("company/marks.json", {})]);
+  if (!posted || !posted.length) return null;
+  const last = posted[posted.length - 1], n = (neta || []).find(x => x.id === last.id);
+  return { no: last.no, date: last.date, title: n ? n.title.replace(/\n/g, "") : "", marks: (marks || {})[last.no] || {} };
+}
 async function openGame(){
   // まず最新版を取りにいく(最大3秒)。電波が悪いときは保存済みの版で開く
   const hadCache = fm.fileExists(HTML_CACHE);
@@ -611,6 +629,7 @@ async function openGame(){
   const saved = loadSave();
   const [events, month, rems, wishes] = [await todayEvents(), await monthEvents(), await loadReminders(), await loadWishes()];
   const pays = await loadPays();
+  const moshimo = await loadMoshimo();
   // 予定を書き込めるカレンダー(標準のカレンダーを先頭に)
   let evCals = [];
   try {
@@ -634,7 +653,7 @@ async function openGame(){
     + ";window.__LQ_EVENTS__=" + js(events) + ";window.__LQ_MONTH__=" + js(month)
     + ";window.__LQ_MONTHRANGE__=" + js(monthRange().map(d => d.getTime()))
     + ";window.__LQ_REMS__=" + js(rems) + ";window.__LQ_REMS_ALL__=" + js(remAll) + ";window.__LQ_REMLISTS__=" + js(remCals.map(c => c.title)) + ";window.__LQ_REMINFO__=" + js(remInfo) + ";window.__LQ_WISHES__=" + js(wishes)
-    + ";window.__LQ_WISHLIST__=" + js(wishCal ? wishCal.title : "") + ";window.__LQ_EVCALS__=" + js(evCals.map(c => c.title)) + ";window.__LQ_PAYS__=" + js(pays) + ";window.__LQ_PAYLISTS__=" + js(payCals.map(c => c.title)) + ";</script>";
+    + ";window.__LQ_WISHLIST__=" + js(wishCal ? wishCal.title : "") + ";window.__LQ_EVCALS__=" + js(evCals.map(c => c.title)) + ";window.__LQ_POST__=" + js(moshimo) + ";window.__LQ_PAYS__=" + js(pays) + ";window.__LQ_PAYLISTS__=" + js(payCals.map(c => c.title)) + ";</script>";
   html = html.replace("<head>", "<head>" + boot)
     // フォントの読み込みを待たずに表示する
     .replace(/<link rel="stylesheet" href="(https:\/\/fonts\.googleapis\.com[^"]+)">/, '<link rel="stylesheet" href="$1" media="print" onload="this.media=\'all\'">');
@@ -657,7 +676,9 @@ async function openGame(){
     let added = false, remAdded = false, wishChanged = false, payChanged = false;
     for (const op of r.o || []) {
       try {
-        if (op.type === "rem") {
+        if (op.type === "openURL") {
+          if (/^(https|scriptable):\/\//.test(String(op.url || ""))) Safari.open(String(op.url));
+        } else if (op.type === "rem") {
           const rem = remMap.get(op.id);
           if (rem) { rem.isCompleted = !!op.done; rem.save(); }
         } else if (op.type === "addPay") {
