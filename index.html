@@ -417,6 +417,7 @@ function fresh(){
     care:{date:"",done:false},
     wx:{date:"",done:false},
     post:{date:"",done:false,plats:{}},
+    shot:{date:"",done:false},
     health:{date:"",got:{}},
     hist:{},
     wardrobe:{owned:{},wear:""},
@@ -447,6 +448,7 @@ function normalize(s){
   if(!o.multi||typeof o.multi!=="object")o.multi={};
   if(!o.diary||typeof o.diary!=="object")o.diary={};
   o.wx=Object.assign({date:"",done:false},s.wx||{});
+  o.shot=Object.assign({date:"",done:false},s.shot||{});
   o.care=Object.assign({date:"",done:false},s.care||{});
   if(!Array.isArray(o.lifeEvents))o.lifeEvents=[];
   o.health=Object.assign({date:"",got:{}},s.health||{});if(!o.health.got)o.health.got={};
@@ -529,6 +531,7 @@ function rollover(now=new Date()){
   if(state.obs.date!==t){state.obs={date:t,done:{}};changed=true}
   if(state.wx.date!==t){state.wx={date:t,done:false};changed=true}
   if(state.post.date!==t){state.post={date:t,done:false,plats:{}};changed=true}
+  if(state.shot.date!==t){state.shot={date:t,done:false};changed=true}
   if(state.care.date!==t){state.care={date:t,done:false};changed=true}
   if(state.health.date!==t){state.health={date:t,got:{}};changed=true}
   if(state.rems.date!==t){state.rems={date:t,done:{}};changed=true;
@@ -994,7 +997,7 @@ function questStateFor(q,now){
 function questRow(q,kind,now){
   const D=DIFF[q.d], S=STATS[q.s];
   let right, cls="q", extra="";
-  const done = kind==="care" ? !!state.care.done : kind==="wx" ? !!state.wx.done : kind==="post" ? !!state.post.done : kind==="daily" ? !!state.daily.done[q.id] : kind==="event" ? !!state.events.done[q.id] : kind==="rem" ? !!state.rems.done[q.id] : kind==="obs" ? !!state.obs.done[q.id] : isDoneNow(q);
+  const done = kind==="care" ? !!state.care.done : kind==="wx" ? !!state.wx.done : kind==="post" ? !!state.post.done : kind==="shot" ? !!state.shot.done : kind==="daily" ? !!state.daily.done[q.id] : kind==="event" ? !!state.events.done[q.id] : kind==="rem" ? !!state.rems.done[q.id] : kind==="obs" ? !!state.obs.done[q.id] : isDoneNow(q);
   if(done){
     cls+=" done";
     right=`<button class="stamp" data-undo="${kind}:${q.id}" aria-label="${esc(q.t)} の達成を取り消す">CLEAR</button>`;
@@ -1003,7 +1006,7 @@ function questRow(q,kind,now){
     if(s.st==="locked"){cls+=" locked";right=`<div class="wait">受注まで<br><span class="mono">${s.wait}</span></div>`}
     else if(s.st==="expired"){cls+=" expired";right=`<span class="expired-tag">期限切れ</span>`}
     else{right=`<button class="btn go" data-do="daily:${q.id}">達成</button>`;if(s.left)extra=`<span>のこり ${s.left}</span>`}
-  }else if(kind==="wx"||kind==="care"||kind==="post"){
+  }else if(kind==="wx"||kind==="care"||kind==="post"||kind==="shot"){
     right=`<button class="btn go" data-do="${kind}:${kind}">達成</button>`;
   }else if(kind==="rem"||kind==="obs"){
     right=`<button class="btn go" data-do="${kind}:${q.id}">達成</button>`;
@@ -1018,6 +1021,7 @@ function questRow(q,kind,now){
     : kind==="wx" ? `<span class="chip">今日の天気</span>`
     : kind==="care" ? `<span class="chip">ケア</span>`
     : kind==="post" ? `<span class="chip">毎日</span>`
+    : kind==="shot" ? `<span class="chip">${shotQuest().chip}</span>`
     : kind==="obs" ? `${q.overdue&&!done?`<span class="chip expired-tag">期限切れ</span>`:q.due?`<span class="chip">${remDueLabel(q)}</span>`:q.inDaily?`<span class="chip">今日のノート</span>`:""}<span>${esc(q.file||"")}</span>`
     : kind==="rem" ? `${q.overdue&&!done?`<span class="chip expired-tag">期限切れ</span>`:`<span class="chip">${remDueLabel(q)}</span>`}${q.list?`<span>${esc(q.list)}</span>`:""}`
     : `<span class="chip">${(REPEAT[q.r]||REPEAT.daily).chip}</span>`;
@@ -1266,12 +1270,24 @@ function togglePostPlat(k){
   if(!all&&state.post.done)return undo("post","post");
   save();render();
 }
+// 数字のスクショ(作戦部が使う)。毎日=前の日の回の TikTok 動画分析、月曜=週1のセットも、月の最初の月曜=視聴者も
+// 中身は moshimo-shorts の company/growth.md「社長に送ってもらう画面」と同じ。変わったらここも直す
+function shotQuest(now=new Date()){
+  const d=gameDate(now),mon=d.getDay()===1,first=mon&&d.getDate()<=7;
+  const items=["TikTok：きのうの回の「動画分析」→「概要」を上から下まで（2〜3枚）"];
+  if(mon)items.push("TikTok：プロフィール1枚","YouTube Studio：「概要」と「コンテンツ」（視聴を継続／スワイプ）");
+  if(first)items.push("TikTok・YouTube Studio の「視聴者」（性別・年齢）");
+  return {id:"shot",t:mon?"数字のスクショを送る（週1のセットも）":"きのうの「もしも」の数字を送る",s:"int",d:1,chip:first?"月1":mon?"週1":"毎日",items};
+}
 function postSection(now){
   const n=POST_PLATS.filter(([k])=>postPlat(k)).length;
   return `<section class="win" aria-labelledby="h-post"><h2 class="win-title" id="h-post"><b>📮 投稿クエスト</b><span class="mono">${n} / ${POST_PLATS.length}</span></h2>
     <ul class="qlist">${questRow(postQuest(),"post",now)}</ul>
     <div class="pplats">${POST_PLATS.map(([k,l])=>`<button type="button" class="btn ghost small${postPlat(k)?" on":""}" data-pplat="${k}" aria-pressed="${postPlat(k)}">${postPlat(k)?"✓ ":""}${l}</button>`).join("")}</div>
-    <p class="note" style="margin:6px 0 0">投稿した媒体を押してね。4つそろうと達成。</p></section>`;
+    <p class="note" style="margin:6px 0 0">投稿した媒体を押してね。4つそろうと達成。</p>
+    <ul class="qlist" style="margin-top:8px;border-top:2px dotted #ffffff1c">${questRow(shotQuest(now),"shot",now)}</ul>
+    <ul class="note" style="margin:4px 0 0;padding-left:18px">${shotQuest(now).items.map(t=>`<li>${esc(t)}</li>`).join("")}</ul>
+    <p class="note" style="margin:4px 0 0">撮ったら投稿ボックスの「📊 数字」ページから送ってね。</p></section>`;
 }
 function wxSection(now){
   const q=wxQuest();if(!q)return"";
@@ -1508,6 +1524,8 @@ function complete(kind,id){
     q=wxQuest();if(!q||state.wx.done)return;
   }else if(kind==="post"){
     q=postQuest();if(state.post.done)return;
+  }else if(kind==="shot"){
+    q=shotQuest();if(state.shot.done)return;
   }else if(kind==="obs"){
     q=obsQuests().find(r=>r.id===id);if(!q||state.obs.done[id])return;
   }else if(kind==="rem"){
@@ -1530,7 +1548,7 @@ function complete(kind,id){
       else lines.push(`全${q.days}日のうち ${m.days.length}日ぶん クリア。`)}}
   else if(kind==="rem"){state.rems.done[id]=true;pushOp({type:"rem",id,done:true})}
   else if(kind==="obs"){state.obs.done[id]=true;pushOp({type:"obsTask",id,done:true})}
-  else if(kind==="wx"){state.wx.done=true}else if(kind==="care"){state.care.done=true}else if(kind==="post"){state.post.done=true}else q.doneOn=today();
+  else if(kind==="wx"){state.wx.done=true}else if(kind==="care"){state.care.done=true}else if(kind==="post"){state.post.done=true}else if(kind==="shot"){state.shot.done=true}else q.doneOn=today();
   if(countDone(1))lines.push(`連続 ${state.streak}日目！ よくがんばった。`);
   if(kind==="daily"&&!state.daily.bonus&&state.daily.ids.every(i=>state.daily.done[i])){
     state.daily.bonus=true;lv=grant(ALL_CLEAR.xp,ALL_CLEAR.g,null,"デイリー オールクリア")||lv;
@@ -1555,6 +1573,7 @@ function undo(kind,id){
   else if(kind==="wx"){q=wxQuest();if(!q||!state.wx.done)return;state.wx.done=false}
   else if(kind==="care"){q=careQuest();if(!q||!state.care.done)return;state.care.done=false}
   else if(kind==="post"){q=postQuest();if(!state.post.done)return;state.post.done=false}
+  else if(kind==="shot"){q=shotQuest();if(!state.shot.done)return;state.shot.done=false}
   else{q=state.custom.find(c=>c.id===id);if(!q||!isDoneNow(q))return;sameDay=q.doneOn===today();q.doneOn=""}
   const D=DIFF[q.d];grant(D.xp,D.g,q.s,q.t,-1);countDone(-1,sameDay);
   if(state.week.bonus&&state.week.n<WEEK_GOAL){state.week.bonus=false;grant(WEEK_BONUS.xp,WEEK_BONUS.g,null,"ウィークリー達成",-1)}
