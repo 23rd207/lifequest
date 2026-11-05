@@ -1275,7 +1275,7 @@ function togglePostPlat(k){
 function shotQuest(now=new Date()){
   const d=gameDate(now),mon=d.getDay()===1,first=mon&&d.getDate()<=7;
   const items=["TikTok：きのうの回の「動画分析」→「概要」を上から下まで（2〜3枚）"];
-  if(mon)items.push("TikTok：プロフィール1枚","YouTube Studio：「概要」と「コンテンツ」（視聴を継続／スワイプ）");
+  if(mon)items.push("TikTok：プロフィール1枚","YouTube Studio：「概要」と「コンテンツ」（視聴を継続／スワイプ）","YouTube Studio：先週の回を1本ずつ「エンゲージメント」タブ");
   if(first)items.push("TikTok・YouTube Studio の「視聴者」（性別・年齢）");
   return {id:"shot",t:mon?"数字のスクショを送る（週1のセットも）":"きのうの「もしも」の数字を送る",s:"int",d:1,chip:first?"月1":mon?"週1":"毎日",items};
 }
